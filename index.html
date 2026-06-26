@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Daisy Booking widget — dev harness</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #1a4359; }
+      h1 { font-size: 20px; }
+      .demo { margin: 24px 0; }
+      button.book { background: #006fac; color: #fff; border: none; padding: 12px 20px; border-radius: 8px; font-size: 15px; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <h1>Daisy Booking — local harness</h1>
+    <p>This page stands in for a WordPress + Divi page. The widget runs in a Shadow DOM, so this page's styles do not leak in.</p>
+
+    <div class="demo">
+      <h2>Inline embed</h2>
+      <daisy-booking radius="15"></daisy-booking>
+    </div>
+
+    <div class="demo">
+      <h2>Modal trigger (the "Book Online" pattern)</h2>
+      <button class="book book-online-trigger">Book Online</button>
+    </div>
+
+    <script type="module" src="/src/widget/index.ts"></script>
+    <script>
+      document.querySelectorAll('.book-online-trigger').forEach((b) =>
+        b.addEventListener('click', (e) => {
+          e.preventDefault();
+          window.daisyBooking.open({});
+        }),
+      );
+    </script>
+  </body>
+</html>
