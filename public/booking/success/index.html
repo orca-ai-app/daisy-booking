@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Booking confirmed — Daisy First Aid</title>
+    <style>
+      :root { --primary: #006fac; --ink: #1a4359; --muted: #5a7a8f; --bg: #f5f9fb; }
+      body { font-family: 'Poppins', system-ui, sans-serif; background: var(--bg); color: var(--ink); margin: 0; min-height: 100vh; display: grid; place-items: center; }
+      .card { background: #fff; border-radius: 18px; box-shadow: 0 6px 24px rgba(0,60,100,.1); padding: 40px 32px; max-width: 460px; width: 92%; text-align: center; }
+      .tick { width: 64px; height: 64px; border-radius: 50%; background: #67a671; display: grid; place-items: center; margin: 0 auto 18px; }
+      .tick svg { width: 32px; height: 32px; stroke: #fff; stroke-width: 3; fill: none; }
+      h1 { font-family: 'Quicksand', sans-serif; font-size: 24px; margin: 0 0 8px; }
+      p { color: var(--muted); line-height: 1.55; }
+      .ref { font-family: ui-monospace, monospace; font-weight: 700; color: var(--primary); }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="tick"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg></div>
+      <h1>You're booked in</h1>
+      <p>
+        Thank you — your place is confirmed and a confirmation email is on its way.
+        We look forward to seeing you at your Daisy First Aid class.
+      </p>
+      <p id="ref" hidden>Booking reference: <span class="ref"></span></p>
+    </div>
+    <script>
+      // session_id is on the URL; the booking is confirmed server-side by the
+      // Stripe webhook. This page is purely the friendly landing.
+      const sid = new URLSearchParams(location.search).get('session_id');
+      if (sid) {
+        const el = document.getElementById('ref');
+        el.querySelector('.ref').textContent = sid.slice(-8).toUpperCase();
+        el.hidden = false;
+      }
+    </script>
+  </body>
+</html>

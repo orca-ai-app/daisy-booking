@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Book your place — Daisy First Aid</title>
+    <style>
+      :root { --bg: #f5f9fb; --ink: #1a4359; }
+      body { font-family: 'Poppins', system-ui, sans-serif; background: var(--bg); color: var(--ink); margin: 0; min-height: 100vh; padding: 32px 16px; box-sizing: border-box; }
+      .wrap { max-width: 520px; margin: 0 auto; }
+      .brand { font-family: 'Quicksand', sans-serif; font-weight: 700; font-size: 22px; text-align: center; margin: 0 0 20px; color: #006fac; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <p class="brand">Daisy First Aid</p>
+      <div id="mount"></div>
+    </div>
+    <!-- Versioned widget bundle (same one WordPress embeds). -->
+    <script src="/widget/v1/daisy-booking.js" defer></script>
+    <script>
+      // URL is /book/:token — pull the token off the path and hand it to the widget.
+      const parts = location.pathname.split('/').filter(Boolean); // ['book', ':token']
+      const token = parts[1] || new URLSearchParams(location.search).get('token');
+      window.addEventListener('DOMContentLoaded', () => {
+        const el = document.createElement('daisy-booking');
+        if (token) el.setAttribute('token', token);
+        document.getElementById('mount').appendChild(el);
+      });
+    </script>
+  </body>
+</html>

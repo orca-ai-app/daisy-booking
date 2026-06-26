@@ -11,3 +11,9 @@
   [headers.values]
     Cache-Control = "public, max-age=86400"
     Access-Control-Allow-Origin = "*"
+
+# /book/:token → the standalone single-course booking page (token read from path).
+[[redirects]]
+  from = "/book/*"
+  to = "/book/index.html"
+  status = 200

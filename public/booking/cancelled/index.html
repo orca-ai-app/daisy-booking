@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Booking not completed — Daisy First Aid</title>
+    <style>
+      :root { --primary: #006fac; --ink: #1a4359; --muted: #5a7a8f; --bg: #f5f9fb; }
+      body { font-family: 'Poppins', system-ui, sans-serif; background: var(--bg); color: var(--ink); margin: 0; min-height: 100vh; display: grid; place-items: center; }
+      .card { background: #fff; border-radius: 18px; box-shadow: 0 6px 24px rgba(0,60,100,.1); padding: 40px 32px; max-width: 460px; width: 92%; text-align: center; }
+      h1 { font-family: 'Quicksand', sans-serif; font-size: 24px; margin: 0 0 8px; }
+      p { color: var(--muted); line-height: 1.55; }
+      a.btn { display: inline-block; margin-top: 12px; background: var(--primary); color: #fff; text-decoration: none; padding: 12px 22px; border-radius: 8px; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Your booking wasn't completed</h1>
+      <p>No payment was taken. If you changed your mind that's no problem — you can search again and book whenever you're ready.</p>
+      <a class="btn" href="javascript:history.length>1?history.back():location.assign('/')">Try again</a>
+    </div>
+  </body>
+</html>

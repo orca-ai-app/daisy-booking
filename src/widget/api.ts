@@ -70,6 +70,41 @@ export function getPublicCourses(input: {
   return call<PublicCoursesResult>('get-public-courses', input);
 }
 
+export async function getCourseByToken(booking_token: string): Promise<CourseCard | null> {
+  const res = await call<PublicCoursesResult>('get-public-courses', { booking_token });
+  return res.courses[0] ?? null;
+}
+
 export function submitInterestForm(input: InterestFormInput): Promise<{ ok: true; id: string }> {
   return call<{ ok: true; id: string }>('process-interest-form', input);
+}
+
+export interface CheckoutInput {
+  course_instance_id?: string;
+  booking_token?: string;
+  ticket_type_id: string;
+  quantity: number;
+  customer: { first_name: string; last_name: string; email: string; phone?: string; postcode?: string };
+  discount_code?: string;
+  origin?: string;
+}
+
+export interface DiscountResult {
+  valid: boolean;
+  reason: string | null;
+  amount_off_pence?: number;
+}
+
+export function validateDiscount(input: {
+  code: string;
+  course_instance_id?: string;
+  amount_pence?: number;
+}): Promise<DiscountResult> {
+  return call<DiscountResult>('validate-discount', input);
+}
+
+export function createCheckoutSession(
+  input: CheckoutInput,
+): Promise<{ checkout_url: string; session_id: string; booking_reference: string }> {
+  return call('create-checkout-session', input);
 }

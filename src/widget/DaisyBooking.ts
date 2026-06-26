@@ -1,6 +1,13 @@
 import { STYLES } from './styles';
 import { formatDate, formatPence, formatTime, escapeHtml } from './format';
-import { getPublicCourses, submitInterestForm, type CourseCard } from './api';
+import {
+  getPublicCourses,
+  getCourseByToken,
+  submitInterestForm,
+  validateDiscount,
+  createCheckoutSession,
+  type CourseCard,
+} from './api';
 
 type View = 'postcode' | 'searching' | 'results' | 'interest' | 'tickets';
 
@@ -34,6 +41,32 @@ export class DaisyBooking extends HTMLElement {
 
   connectedCallback() {
     if (this.getAttribute('postcode')) this.postcode = this.getAttribute('postcode')!;
+    const token = this.getAttribute('token');
+    if (token) {
+      // /book/:token — single-course mode: jump straight to the ticket form.
+      this.view = 'searching';
+      this.render();
+      void this.loadByToken(token);
+      return;
+    }
+    this.render();
+  }
+
+  private async loadByToken(token: string) {
+    try {
+      const course = await getCourseByToken(token);
+      if (course) {
+        this.courses = [course];
+        this.selected = course;
+        this.view = 'tickets';
+      } else {
+        this.error = 'This booking link is no longer available.';
+        this.view = 'postcode';
+      }
+    } catch (err) {
+      this.error = err instanceof Error ? err.message : 'Could not load that course.';
+      this.view = 'postcode';
+    }
     this.render();
   }
 
@@ -115,21 +148,71 @@ export class DaisyBooking extends HTMLElement {
     }
   }
 
-  // Wave 11 replaces this with create-checkout-session → Stripe redirect.
-  private continueToPayment(form: HTMLFormElement) {
+  private async continueToPayment(form: HTMLFormElement) {
     const data = new FormData(form);
     const ticketId = String(data.get('ticket') ?? '');
-    const name = String(data.get('name') ?? '').trim();
+    const first = String(data.get('name') ?? '').trim();
+    const last = String(data.get('last') ?? '').trim();
     const email = String(data.get('email') ?? '').trim();
-    if (!ticketId || !name || !EMAIL_RE.test(email)) {
-      this.error = 'Please choose a ticket and enter your name and a valid email.';
+    const discountCode = String(data.get('discount') ?? '').trim();
+    if (!ticketId || !first || !last || !EMAIL_RE.test(email)) {
+      this.error = 'Please choose a ticket and enter your first name, last name and a valid email.';
       this.render();
       return;
     }
     this.error = '';
-    const notice = this.root.querySelector('.pay-notice');
-    if (notice) {
-      notice.textContent = 'Payment is being connected (next build step). Your details are valid.';
+    this.busy = true;
+    this.render();
+    try {
+      const { checkout_url } = await createCheckoutSession({
+        course_instance_id: this.selected!.id,
+        ticket_type_id: ticketId,
+        quantity: 1,
+        discount_code: discountCode || undefined,
+        customer: {
+          first_name: first,
+          last_name: last,
+          email,
+          phone: String(data.get('phone') ?? '').trim() || undefined,
+          postcode: String(data.get('postcode') ?? '').trim() || undefined,
+        },
+        origin: window.location.origin,
+      });
+      // The modal/widget can't host Stripe — redirect the whole top window.
+      window.top!.location.href = checkout_url;
+    } catch (err) {
+      this.error = err instanceof Error ? err.message : 'Could not start payment.';
+      this.busy = false;
+      this.render();
+    }
+  }
+
+  // Live discount preview on the tickets view.
+  private async checkDiscount() {
+    const input = this.root.querySelector('#tdiscount') as HTMLInputElement | null;
+    const out = this.root.querySelector('.discount-note');
+    const code = input?.value.trim();
+    if (!code || !out) return;
+    out.textContent = 'Checking…';
+    const ticketId = (this.root.querySelector('input[name="ticket"]:checked') as HTMLInputElement)?.value;
+    const ticket = this.selected!.ticket_types.find((t) => t.id === ticketId);
+    try {
+      const res = await validateDiscount({
+        code,
+        course_instance_id: this.selected!.id,
+        amount_pence: ticket?.price_pence,
+      });
+      if (res.valid) {
+        out.textContent = res.amount_off_pence
+          ? `Code applied — ${formatPence(res.amount_off_pence)} off.`
+          : 'Code applied.';
+        (out as HTMLElement).style.color = 'var(--daisy-green)';
+      } else {
+        out.textContent = res.reason ?? 'That code cannot be used.';
+        (out as HTMLElement).style.color = 'var(--daisy-orange)';
+      }
+    } catch {
+      out.textContent = '';
     }
   }
 
@@ -246,8 +329,12 @@ export class DaisyBooking extends HTMLElement {
           <div class="field"><label for="tphone">Phone (optional)</label><input id="tphone" name="phone" /></div>
           <div class="field"><label for="tpc">Postcode (optional)</label><input id="tpc" name="postcode" /></div>
         </div>
-        <button class="primary" type="submit">Continue to payment</button>
-        <p class="pay-notice error" style="color:var(--daisy-muted)"></p>
+        <div class="field">
+          <label for="tdiscount">Discount code (optional)</label>
+          <input id="tdiscount" name="discount" placeholder="Have a code?" />
+          <p class="discount-note" style="font-size:12px;margin:6px 0 0;"></p>
+        </div>
+        <button class="primary" type="submit" ${this.busy ? 'disabled' : ''}>${this.busy ? 'Starting payment…' : 'Continue to payment'}</button>
         ${this.error ? `<p class="error">${escapeHtml(this.error)}</p>` : ''}
       </form>`;
   }
@@ -290,7 +377,8 @@ export class DaisyBooking extends HTMLElement {
 
     this.root.querySelector('form.tickets')?.addEventListener('submit', (e) => {
       e.preventDefault();
-      this.continueToPayment(e.target as HTMLFormElement);
+      void this.continueToPayment(e.target as HTMLFormElement);
     });
+    this.root.querySelector('#tdiscount')?.addEventListener('blur', () => void this.checkDiscount());
   }
 }
