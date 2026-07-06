@@ -6,6 +6,7 @@ import {
   submitInterestForm,
   validateDiscount,
   createCheckoutSession,
+  SCRIPT_ORIGIN,
   type CourseCard,
 } from './api';
 
@@ -176,7 +177,9 @@ export class DaisyBooking extends HTMLElement {
           phone: String(data.get('phone') ?? '').trim() || undefined,
           postcode: String(data.get('postcode') ?? '').trim() || undefined,
         },
-        origin: window.location.origin,
+        // The booking site's own origin (where /booking/success lives) — NOT
+        // the embedding page's origin (WordPress has no success page).
+        origin: SCRIPT_ORIGIN,
       });
       // The modal/widget can't host Stripe — redirect the whole top window.
       window.top!.location.href = checkout_url;

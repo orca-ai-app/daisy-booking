@@ -4,6 +4,20 @@
 const BASE = `${__SUPABASE_URL__}/functions/v1`;
 const ANON = __SUPABASE_ANON_KEY__;
 
+// The origin the widget script is SERVED from (booking.daisyfirstaid.com in
+// production, the Netlify URL before DNS cutover). Captured at load via
+// document.currentScript. Stripe success/cancel pages live on THIS origin —
+// using the embedding page's origin (e.g. www.daisyfirstaid.com on WordPress)
+// would send paid customers to a 404.
+export const SCRIPT_ORIGIN: string = (() => {
+  try {
+    const src = (document.currentScript as HTMLScriptElement | null)?.src;
+    return src ? new URL(src).origin : window.location.origin;
+  } catch {
+    return window.location.origin;
+  }
+})();
+
 export interface TicketType {
   id: string;
   name: string;
