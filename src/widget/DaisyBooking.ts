@@ -6,9 +6,11 @@ import {
   submitInterestForm,
   validateDiscount,
   createCheckoutSession,
+  errorMessage,
   SCRIPT_ORIGIN,
   type CourseCard,
 } from './api';
+import { logger } from './logger';
 
 type View = 'postcode' | 'searching' | 'results' | 'interest' | 'tickets';
 
@@ -30,6 +32,7 @@ export class DaisyBooking extends HTMLElement {
   private selected: CourseCard | null = null;
   private error = '';
   private busy = false;
+  private canRetrySearch = false;
 
   static get observedAttributes() {
     return ['franchisee', 'theme', 'radius'];
@@ -65,7 +68,7 @@ export class DaisyBooking extends HTMLElement {
         this.view = 'postcode';
       }
     } catch (err) {
-      this.error = err instanceof Error ? err.message : 'Could not load that course.';
+      this.error = errorMessage(err, 'Could not load that course.');
       this.view = 'postcode';
     }
     this.render();
@@ -89,6 +92,7 @@ export class DaisyBooking extends HTMLElement {
       return;
     }
     this.error = '';
+    this.canRetrySearch = false;
     this.view = 'searching';
     this.render();
     try {
@@ -100,7 +104,8 @@ export class DaisyBooking extends HTMLElement {
       this.courses = result.courses;
       this.view = result.courses.length > 0 ? 'results' : result.suggest_interest_form ? 'interest' : 'results';
     } catch (err) {
-      this.error = err instanceof Error ? err.message : 'Could not search right now.';
+      this.error = errorMessage(err, 'Could not search right now.');
+      this.canRetrySearch = true;
       this.view = 'postcode';
     }
     this.render();
@@ -112,6 +117,43 @@ export class DaisyBooking extends HTMLElement {
       this.view = 'tickets';
       this.error = '';
       this.render();
+      // The results list may be stale by the time a parent opens the checkout
+      // step — re-check availability before they fill in the whole form.
+      void this.refreshSpots();
+    }
+  }
+
+  private async refreshSpots() {
+    const course = this.selected;
+    const pc = this.postcode.trim();
+    if (!course || !pc) return;
+    try {
+      const result = await getPublicCourses({
+        postcode: pc,
+        franchisee_id: this.franchiseeId,
+        radius_miles: this.radius,
+      });
+      // Bail if the user has already navigated away from this course.
+      if (this.view !== 'tickets' || this.selected?.id !== course.id) return;
+      const fresh = result.courses.find((c) => c.id === course.id);
+      if (fresh && fresh.spots_remaining > 0) {
+        this.selected = fresh;
+        return;
+      }
+      // Patch the DOM in place (a full re-render would wipe anything typed).
+      const form = this.root.querySelector('form.tickets');
+      if (!form || form.querySelector('.soldout')) return;
+      const note = document.createElement('div');
+      note.className = 'notice warn soldout';
+      note.setAttribute('role', 'alert');
+      note.textContent =
+        'Sorry — this class has just sold out. Please go back and choose another class.';
+      form.prepend(note);
+      const submit = form.querySelector('button.primary') as HTMLButtonElement | null;
+      if (submit) submit.disabled = true;
+      logger.warn('Course sold out between search and checkout', { course_id: course.id });
+    } catch {
+      // Best-effort check only — the server re-validates at checkout.
     }
   }
 
@@ -143,7 +185,7 @@ export class DaisyBooking extends HTMLElement {
           A local trainer will be in touch.</p>
         </div>`;
     } catch (err) {
-      this.error = err instanceof Error ? err.message : 'Could not submit right now.';
+      this.error = errorMessage(err, 'Could not submit right now.');
       this.busy = false;
       this.render();
     }
@@ -184,7 +226,7 @@ export class DaisyBooking extends HTMLElement {
       // The modal/widget can't host Stripe — redirect the whole top window.
       window.top!.location.href = checkout_url;
     } catch (err) {
-      this.error = err instanceof Error ? err.message : 'Could not start payment.';
+      this.error = errorMessage(err, 'Could not start payment.');
       this.busy = false;
       this.render();
     }
@@ -214,8 +256,11 @@ export class DaisyBooking extends HTMLElement {
         out.textContent = res.reason ?? 'That code cannot be used.';
         (out as HTMLElement).style.color = 'var(--daisy-orange)';
       }
-    } catch {
-      out.textContent = '';
+    } catch (err) {
+      // Don't clear silently — the code may still be fine; checkout re-validates it.
+      logger.warn('Discount check failed', { error: String(err) });
+      out.textContent = "We couldn't check that code — you can still book, or try again.";
+      (out as HTMLElement).style.color = 'var(--daisy-orange)';
     }
   }
 
@@ -251,7 +296,8 @@ export class DaisyBooking extends HTMLElement {
           <input id="pc" name="postcode" placeholder="e.g. SW11 1AA" value="${escapeHtml(this.postcode)}" autocomplete="postal-code" />
         </div>
         <button class="primary" type="submit">Search</button>
-        ${this.error ? `<p class="error">${escapeHtml(this.error)}</p>` : ''}
+        ${this.error ? `<p class="error" role="alert">${escapeHtml(this.error)}</p>` : ''}
+        ${this.error && this.canRetrySearch ? `<button class="retry" type="button" data-retry>Try again</button>` : ''}
       </form>`;
   }
 
@@ -302,7 +348,7 @@ export class DaisyBooking extends HTMLElement {
         </div>
         <div class="field"><label for="inotes">Anything else? (optional)</label><textarea id="inotes" name="notes" rows="2"></textarea></div>
         <button class="primary" type="submit" ${this.busy ? 'disabled' : ''}>${this.busy ? 'Sending…' : 'Register interest'}</button>
-        ${this.error ? `<p class="error">${escapeHtml(this.error)}</p>` : ''}
+        ${this.error ? `<p class="error" role="alert">${escapeHtml(this.error)}</p>` : ''}
       </form>`;
   }
 
@@ -338,7 +384,7 @@ export class DaisyBooking extends HTMLElement {
           <p class="discount-note" style="font-size:12px;margin:6px 0 0;"></p>
         </div>
         <button class="primary" type="submit" ${this.busy ? 'disabled' : ''}>${this.busy ? 'Starting payment…' : 'Continue to payment'}</button>
-        ${this.error ? `<p class="error">${escapeHtml(this.error)}</p>` : ''}
+        ${this.error ? `<p class="error" role="alert">${escapeHtml(this.error)}</p>` : ''}
       </form>`;
   }
 
@@ -346,16 +392,44 @@ export class DaisyBooking extends HTMLElement {
     return `<div class="back"><button class="link" data-back="${to}">← Back</button></div>`;
   }
 
+  // Run an event handler defensively: an unexpected throw becomes a logged
+  // error plus a visible message instead of a silently dead widget.
+  private guard(label: string, fn: () => void | Promise<void>) {
+    const fail = (err: unknown) => {
+      logger.error(`Unhandled error in ${label}`, { error: String(err) });
+      this.error = 'Something went wrong. Please try again.';
+      this.busy = false;
+      this.render();
+    };
+    try {
+      const result = fn();
+      if (result instanceof Promise) result.catch(fail);
+    } catch (err) {
+      fail(err);
+    }
+  }
+
   private wire() {
     const search = this.root.querySelector('form.search');
     search?.addEventListener('submit', (e) => {
       e.preventDefault();
-      this.postcode = (this.root.querySelector('#pc') as HTMLInputElement)?.value ?? '';
-      void this.search();
+      this.guard('search', () => {
+        this.postcode = (this.root.querySelector('#pc') as HTMLInputElement)?.value ?? '';
+        return this.search();
+      });
     });
 
+    this.root.querySelector('[data-retry]')?.addEventListener('click', () =>
+      this.guard('retry-search', () => {
+        // Re-read the field in case the postcode was edited before retrying.
+        const pc = (this.root.querySelector('#pc') as HTMLInputElement | null)?.value;
+        if (pc != null) this.postcode = pc;
+        return this.search();
+      }),
+    );
+
     this.root.querySelectorAll('.card').forEach((el) => {
-      const go = () => this.selectCourse((el as HTMLElement).dataset.id!);
+      const go = () => this.guard('select-course', () => this.selectCourse((el as HTMLElement).dataset.id!));
       el.addEventListener('click', go);
       el.addEventListener('keydown', (e) => {
         if ((e as KeyboardEvent).key === 'Enter' || (e as KeyboardEvent).key === ' ') {
@@ -366,22 +440,26 @@ export class DaisyBooking extends HTMLElement {
     });
 
     this.root.querySelectorAll('[data-back]').forEach((el) =>
-      el.addEventListener('click', () => {
-        this.view = (el as HTMLElement).dataset.back as View;
-        this.error = '';
-        this.render();
-      }),
+      el.addEventListener('click', () =>
+        this.guard('back', () => {
+          this.view = (el as HTMLElement).dataset.back as View;
+          this.error = '';
+          this.render();
+        }),
+      ),
     );
 
     this.root.querySelector('form.interest')?.addEventListener('submit', (e) => {
       e.preventDefault();
-      void this.submitInterest(e.target as HTMLFormElement);
+      this.guard('interest-form', () => this.submitInterest(e.target as HTMLFormElement));
     });
 
     this.root.querySelector('form.tickets')?.addEventListener('submit', (e) => {
       e.preventDefault();
-      void this.continueToPayment(e.target as HTMLFormElement);
+      this.guard('checkout', () => this.continueToPayment(e.target as HTMLFormElement));
     });
-    this.root.querySelector('#tdiscount')?.addEventListener('blur', () => void this.checkDiscount());
+    this.root
+      .querySelector('#tdiscount')
+      ?.addEventListener('blur', () => this.guard('discount-check', () => this.checkDiscount()));
   }
 }

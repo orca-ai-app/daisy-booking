@@ -30,23 +30,30 @@ export const STYLES = /* css */ `
   p.sub { margin: 0 0 16px; color: var(--daisy-muted); font-size: 14px; }
   label { display: block; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--daisy-muted); margin-bottom: 6px; }
   input, select, textarea {
-    width: 100%; padding: 10px 12px; font: inherit; color: var(--daisy-ink);
+    width: 100%; min-height: 44px; padding: 10px 12px; font: inherit; color: var(--daisy-ink);
     background: var(--daisy-paper); border: 2px solid var(--daisy-line); border-radius: var(--radius-sm);
   }
   input:focus, select:focus, textarea:focus { outline: none; border-color: var(--daisy-primary); }
+  input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid var(--daisy-yellow); outline-offset: 1px; }
   .field { margin-bottom: 14px; }
   .row { display: flex; gap: 12px; }
   .row > * { flex: 1; }
   button.primary {
     background: var(--daisy-primary); color: #fff; border: none; border-radius: var(--radius-sm);
-    padding: 12px 18px; font: inherit; font-weight: 700; cursor: pointer; width: 100%;
+    padding: 12px 18px; min-height: 48px; font: inherit; font-weight: 700; cursor: pointer; width: 100%;
   }
   button.primary:hover { background: var(--daisy-primary-deep); }
   button.primary:disabled { opacity: .55; cursor: not-allowed; }
-  button.link { background: none; border: none; color: var(--daisy-primary); font: inherit; font-weight: 600; cursor: pointer; padding: 0; text-decoration: underline; }
+  button.link { background: none; border: none; color: var(--daisy-primary); font: inherit; font-weight: 600; cursor: pointer; padding: 10px 0; min-height: 44px; text-decoration: underline; }
+  button.retry {
+    background: none; color: var(--daisy-primary); border: 2px solid var(--daisy-primary); border-radius: var(--radius-sm);
+    padding: 10px 16px; min-height: 44px; font: inherit; font-weight: 700; cursor: pointer; width: 100%; margin-top: 10px;
+  }
+  button.retry:hover { background: var(--daisy-primary-tint); }
+  button:focus-visible, .card:focus-visible { outline: 3px solid var(--daisy-yellow); outline-offset: 2px; }
   .card {
     background: var(--daisy-paper); border: 1px solid var(--daisy-line); border-radius: var(--radius);
-    padding: 14px 16px; margin-bottom: 10px; cursor: pointer; transition: border-color .12s, box-shadow .12s;
+    padding: 14px 16px; min-height: 44px; margin-bottom: 10px; cursor: pointer; transition: border-color .12s, box-shadow .12s;
   }
   .card:hover { border-color: var(--daisy-primary); box-shadow: 0 6px 20px rgba(0,60,100,.10); }
   .card h3 { font-family: 'Quicksand', sans-serif; font-size: 16px; margin: 0 0 4px; color: var(--daisy-ink); }
@@ -61,6 +68,7 @@ export const STYLES = /* css */ `
   @keyframes spin { to { transform: rotate(360deg); } }
   .total { font-size: 16px; font-weight: 700; margin: 4px 0 12px; }
   .notice { background: var(--daisy-primary-tint); border-radius: var(--radius-sm); padding: 12px 14px; font-size: 13px; color: var(--daisy-ink-soft); margin-bottom: 14px; }
+  .notice.warn { background: #FCEFE9; border: 1px solid var(--daisy-orange); color: var(--daisy-orange); font-weight: 600; }
 
   /* Modal (<dialog>) */
   dialog.daisy-modal { border: none; border-radius: var(--radius); padding: 0; max-width: 560px; width: 92vw; box-shadow: 0 20px 60px rgba(0,40,70,.35); }

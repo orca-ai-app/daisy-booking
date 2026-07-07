@@ -7,6 +7,9 @@
 
 import { DaisyBooking } from './DaisyBooking';
 import { open, close } from './modal';
+import { initLogger } from './logger';
+
+initLogger();
 
 if (!customElements.get('daisy-booking')) {
   customElements.define('daisy-booking', DaisyBooking);

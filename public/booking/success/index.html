@@ -26,12 +26,17 @@
       <p id="ref" hidden>Booking reference: <span class="ref"></span></p>
     </div>
     <script>
-      // session_id is on the URL; the booking is confirmed server-side by the
-      // Stripe webhook. This page is purely the friendly landing.
-      const sid = new URLSearchParams(location.search).get('session_id');
-      if (sid) {
+      // The booking is confirmed server-side by the Stripe webhook. This page
+      // is purely the friendly landing. Prefer the real booking reference
+      // (?ref=, appended by create-checkout-session); fall back to the last 8
+      // of the Stripe session id for old links that only carry ?session_id=.
+      const params = new URLSearchParams(location.search);
+      const ref = params.get('ref');
+      const sid = params.get('session_id');
+      const display = ref || (sid ? sid.slice(-8).toUpperCase() : '');
+      if (display) {
         const el = document.getElementById('ref');
-        el.querySelector('.ref').textContent = sid.slice(-8).toUpperCase();
+        el.querySelector('.ref').textContent = display;
         el.hidden = false;
       }
     </script>

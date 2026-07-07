@@ -9,10 +9,16 @@ const SUPABASE_ANON_KEY =
   process.env.VITE_SUPABASE_ANON_KEY ??
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRtdmFqa3JldXdrbmpxeHl4bWx2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNzczMDUsImV4cCI6MjA5Mjk1MzMwNX0.sbhF52EG3y3C0LRNKH40BhoSDMh_Mw7XOZSHXlb7O70';
 
+// Canonical origin the standalone booking pages live on — used as the
+// SCRIPT_ORIGIN fallback when document.currentScript is unavailable. Must never
+// fall back to the embedding page's origin (WordPress has no success page).
+const BOOKING_ORIGIN = process.env.VITE_BOOKING_ORIGIN ?? 'https://booking.daisyfirstaid.com';
+
 export default defineConfig({
   define: {
     __SUPABASE_URL__: JSON.stringify(SUPABASE_URL),
     __SUPABASE_ANON_KEY__: JSON.stringify(SUPABASE_ANON_KEY),
+    __BOOKING_ORIGIN__: JSON.stringify(BOOKING_ORIGIN),
   },
   build: {
     target: 'es2021',

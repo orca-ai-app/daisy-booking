@@ -1,6 +1,8 @@
 // Thin fetch wrapper over the public Daisy Edge Functions. No Supabase SDK —
 // keeps the widget bundle tiny. The anon key is public (RLS-gated).
 
+import { logger } from './logger';
+
 const BASE = `${__SUPABASE_URL__}/functions/v1`;
 const ANON = __SUPABASE_ANON_KEY__;
 
@@ -8,15 +10,43 @@ const ANON = __SUPABASE_ANON_KEY__;
 // production, the Netlify URL before DNS cutover). Captured at load via
 // document.currentScript. Stripe success/cancel pages live on THIS origin —
 // using the embedding page's origin (e.g. www.daisyfirstaid.com on WordPress)
-// would send paid customers to a 404.
+// would send paid customers to a 404. When currentScript is unavailable, fall
+// back to the canonical booking origin (build-time define) — never the
+// embedding page's origin.
 export const SCRIPT_ORIGIN: string = (() => {
   try {
     const src = (document.currentScript as HTMLScriptElement | null)?.src;
-    return src ? new URL(src).origin : window.location.origin;
+    return src ? new URL(src).origin : __BOOKING_ORIGIN__;
   } catch {
-    return window.location.origin;
+    return __BOOKING_ORIGIN__;
   }
 })();
+
+/** A failed edge-function call: `network` = fetch threw / no response at all. */
+export class ApiError extends Error {
+  readonly kind: 'network' | 'server';
+  readonly status?: number;
+  readonly requestId?: string;
+
+  constructor(message: string, kind: 'network' | 'server', status?: number, requestId?: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.kind = kind;
+    this.status = status;
+    this.requestId = requestId;
+  }
+}
+
+export const NETWORK_MESSAGE = 'Check your internet connection and try again.';
+
+/** User-facing message for a failed call, with `(ref XXXX)` when the server sent one. */
+export function errorMessage(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) {
+    if (err.kind === 'network') return NETWORK_MESSAGE;
+    return err.requestId ? `${err.message} (ref ${err.requestId})` : err.message;
+  }
+  return fallback;
+}
 
 export interface TicketType {
   id: string;
@@ -58,22 +88,36 @@ export interface InterestFormInput {
 }
 
 async function call<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}/${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: `Bearer ${ANON}` },
-    body: JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: `Bearer ${ANON}` },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    logger.warn(`Network failure calling ${path}`, { error: String(err) });
+    throw new ApiError(NETWORK_MESSAGE, 'network');
+  }
   if (!res.ok) {
     let message = `Something went wrong (${res.status})`;
+    let requestId: string | undefined;
     try {
-      const data = (await res.json()) as { error?: string };
+      const data = (await res.json()) as { error?: string; request_id?: string };
       if (data.error) message = data.error;
+      if (data.request_id) requestId = data.request_id;
     } catch {
       /* non-JSON */
     }
-    throw new Error(message);
+    logger.error(`${path} failed (${res.status}): ${message}`, undefined, requestId);
+    throw new ApiError(message, 'server', res.status, requestId);
   }
-  return (await res.json()) as T;
+  try {
+    return (await res.json()) as T;
+  } catch {
+    logger.error(`${path} returned a malformed response`);
+    throw new ApiError('Unexpected response from the server.', 'server', res.status);
+  }
 }
 
 export function getPublicCourses(input: {
