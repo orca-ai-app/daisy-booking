@@ -59,6 +59,8 @@ export interface CourseCard {
   id: string;
   template_name: string;
   template_slug: string;
+  template_description: string | null;
+  age_range: string | null;
   event_date: string;
   start_time: string;
   end_time: string;

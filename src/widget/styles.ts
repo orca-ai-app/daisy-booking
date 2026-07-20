@@ -28,6 +28,9 @@ export const STYLES = /* css */ `
   .modal .root { border: none; padding: 0; background: transparent; }
   h2 { font-family: 'Quicksand', sans-serif; font-size: 20px; font-weight: 700; margin: 0 0 4px; color: var(--daisy-ink); }
   p.sub { margin: 0 0 16px; color: var(--daisy-muted); font-size: 14px; }
+  .agerange { display: inline-block; background: var(--daisy-primary-soft, #e8f3fa); color: var(--daisy-primary, #006FAC); font-size: 12px; font-weight: 700; border-radius: 999px; padding: 2px 10px; margin: 0 0 8px; }
+  p.desc { margin: 0 0 10px; color: var(--daisy-muted); font-size: 13px; line-height: 1.5; }
+  p.desc.full { font-size: 14px; color: var(--daisy-ink); margin-bottom: 14px; white-space: pre-line; }
   label { display: block; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--daisy-muted); margin-bottom: 6px; }
   input, select, textarea {
     width: 100%; min-height: 44px; padding: 10px 12px; font: inherit; color: var(--daisy-ink);

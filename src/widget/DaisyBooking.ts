@@ -14,6 +14,10 @@ import { logger } from './logger';
 
 type View = 'postcode' | 'searching' | 'results' | 'interest' | 'tickets';
 
+function truncate(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
+}
+
 const UK_POSTCODE_RE = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -206,6 +210,16 @@ export class DaisyBooking extends HTMLElement {
     this.error = '';
     this.busy = true;
     this.render();
+    // Open the payment tab SYNCHRONOUSLY on the click (popup blockers allow
+    // it here, not after the await) so the customer keeps the website open to
+    // check details while paying (Jenni, M3 feedback §2). If the browser
+    // blocks it anyway, fall back to redirecting this window as before.
+    let payTab: Window | null = null;
+    try {
+      payTab = window.open('about:blank', '_blank');
+    } catch {
+      payTab = null;
+    }
     try {
       const { checkout_url } = await createCheckoutSession({
         course_instance_id: this.selected!.id,
@@ -223,9 +237,18 @@ export class DaisyBooking extends HTMLElement {
         // the embedding page's origin (WordPress has no success page).
         origin: SCRIPT_ORIGIN,
       });
-      // The modal/widget can't host Stripe — redirect the whole top window.
-      window.top!.location.href = checkout_url;
+      // The modal/widget can't host Stripe — send the payment tab there (or
+      // this window when the popup was blocked).
+      if (payTab && !payTab.closed) {
+        payTab.location.href = checkout_url;
+        // Leave the widget usable behind the payment tab.
+        this.busy = false;
+        this.render();
+      } else {
+        window.top!.location.href = checkout_url;
+      }
     } catch (err) {
+      if (payTab && !payTab.closed) payTab.close();
       this.error = errorMessage(err, 'Could not start payment.');
       this.busy = false;
       this.render();
@@ -320,6 +343,8 @@ export class DaisyBooking extends HTMLElement {
         return `
           <div class="card" data-id="${c.id}" role="button" tabindex="0">
             <h3>${escapeHtml(c.template_name)}</h3>
+            ${c.age_range ? `<div class="agerange">Suitable for ${escapeHtml(c.age_range)}</div>` : ''}
+            ${c.template_description ? `<p class="desc">${escapeHtml(truncate(c.template_description, 140))}</p>` : ''}
             <div class="meta">
               <span>${formatDate(c.event_date)}</span>
               <span>${formatTime(c.start_time)}–${formatTime(c.end_time)}</span>
@@ -337,8 +362,8 @@ export class DaisyBooking extends HTMLElement {
     return `
       ${this.backBtn()}
       <h2>No classes near you yet</h2>
-      <div class="notice">We don't have a trainer covering ${escapeHtml(this.postcode.toUpperCase())} right now.
-      Leave your details and we'll let you know when a class is arranged — or arrange one for your group.</div>
+      <div class="notice">We don't have a course listed in ${escapeHtml(this.postcode.toUpperCase())} right now.
+      Please leave your details and we'll direct you to one nearby or help arrange a private course for your group.</div>
       <form class="interest">
         <div class="field"><label for="iname">Your name</label><input id="iname" name="name" /></div>
         <div class="field"><label for="iemail">Email</label><input id="iemail" name="email" type="email" /></div>
@@ -346,7 +371,7 @@ export class DaisyBooking extends HTMLElement {
           <div class="field"><label for="iphone">Phone (optional)</label><input id="iphone" name="phone" /></div>
           <div class="field"><label for="iatt">How many people?</label><input id="iatt" name="attendees" type="number" min="1" value="1" /></div>
         </div>
-        <div class="field"><label for="inotes">Anything else? (optional)</label><textarea id="inotes" name="notes" rows="2"></textarea></div>
+        <div class="field"><label for="inotes">Please describe the course you require and anything else</label><textarea id="inotes" name="notes" rows="3"></textarea></div>
         <button class="primary" type="submit" ${this.busy ? 'disabled' : ''}>${this.busy ? 'Sending…' : 'Register interest'}</button>
         ${this.error ? `<p class="error" role="alert">${escapeHtml(this.error)}</p>` : ''}
       </form>`;
@@ -367,6 +392,8 @@ export class DaisyBooking extends HTMLElement {
       ${this.backBtn('results')}
       <h2>${escapeHtml(c.template_name)}</h2>
       <p class="sub">${formatDate(c.event_date)} · ${formatTime(c.start_time)}–${formatTime(c.end_time)} · ${escapeHtml(c.venue_name ?? c.venue_postcode ?? '')}</p>
+      ${c.age_range ? `<div class="agerange">Suitable for ${escapeHtml(c.age_range)}</div>` : ''}
+      ${c.template_description ? `<p class="desc full">${escapeHtml(c.template_description)}</p>` : ''}
       <form class="tickets">
         <div class="field"><label>Ticket</label>${tickets}</div>
         <div class="row">
