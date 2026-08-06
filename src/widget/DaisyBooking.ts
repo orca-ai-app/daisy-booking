@@ -380,17 +380,29 @@ export class DaisyBooking extends HTMLElement {
   private ticketsView(): string {
     const c = this.selected!;
     const tickets = c.ticket_types
-      .map(
-        (t, i) => `
+      .map((t, i) => {
+        // Both fields are optional until the API ships them — render nothing
+        // when absent.
+        const vat =
+          typeof t.vat_rate === 'number' && t.vat_rate > 0
+            ? ` <span style="font-size:12px;color:var(--daisy-muted);">incl. VAT @ ${t.vat_rate}%</span>`
+            : '';
+        const session = t.session_label
+          ? `<span style="font-size:12px;color:var(--daisy-muted);">${escapeHtml(t.session_label)}</span>`
+          : '';
+        return `
         <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-weight:500;color:var(--daisy-ink);margin-bottom:8px;">
           <input type="radio" name="ticket" value="${t.id}" ${i === 0 ? 'checked' : ''} style="width:auto;" />
-          ${escapeHtml(t.name)} — ${formatPence(t.price_pence)}
-        </label>`,
-      )
+          <span style="display:flex;flex-direction:column;">
+            <span>${escapeHtml(t.name)} — ${formatPence(t.price_pence)}${vat}</span>
+            ${session}
+          </span>
+        </label>`;
+      })
       .join('');
     return `
       ${this.backBtn('results')}
-      <h2>${escapeHtml(c.template_name)}</h2>
+      <h2>${escapeHtml(c.display_name || c.template_name)}</h2>
       <p class="sub">${formatDate(c.event_date)} · ${formatTime(c.start_time)}–${formatTime(c.end_time)} · ${escapeHtml(c.venue_name ?? c.venue_postcode ?? '')}</p>
       ${c.age_range ? `<div class="agerange">Suitable for ${escapeHtml(c.age_range)}</div>` : ''}
       ${c.template_description ? `<p class="desc full">${escapeHtml(c.template_description)}</p>` : ''}

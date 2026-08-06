@@ -53,11 +53,17 @@ export interface TicketType {
   name: string;
   price_pence: number;
   seats_consumed: number;
+  /** Optional session label (e.g. "Morning session") — absent until the API ships it. */
+  session_label?: string | null;
+  /** VAT rate percentage — when set, prices show "incl. VAT @ {rate}%". */
+  vat_rate?: number | null;
 }
 
 export interface CourseCard {
   id: string;
   template_name: string;
+  /** Instance-level display name (private /book/:token pages) — falls back to template_name. */
+  display_name?: string | null;
   template_slug: string;
   template_description: string | null;
   age_range: string | null;
