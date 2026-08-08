@@ -64,6 +64,17 @@ export const STYLES = /* css */ `
   .meta .price { font-weight: 700; color: var(--daisy-primary); }
   .spots { font-size: 12px; color: var(--daisy-green); font-weight: 600; }
   .spots.low { color: var(--daisy-orange); }
+  /* Undated items ("Available any time") — books and e-learning. */
+  h2.items-head { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--daisy-line); }
+  .tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; border-radius: 999px; padding: 3px 10px; margin: 0 0 8px; }
+  .tag.elearning { background: var(--daisy-primary-tint); color: var(--daisy-primary); }
+  .tag.physical { background: #FFF6D6; color: #8A6D00; }
+  .card.item .meta { margin-top: 8px; }
+  button.buy {
+    background: none; color: var(--daisy-primary); border: 2px solid var(--daisy-primary); border-radius: var(--radius-sm);
+    padding: 8px 16px; min-height: 44px; font: inherit; font-weight: 700; cursor: pointer; width: 100%; margin-top: 12px;
+  }
+  button.buy:hover { background: var(--daisy-primary-tint); }
   .back { margin-bottom: 12px; }
   .error { color: var(--daisy-orange); font-size: 13px; margin: 8px 0 0; }
   .empty { text-align: center; padding: 24px 8px; color: var(--daisy-muted); }

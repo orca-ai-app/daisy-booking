@@ -17,3 +17,15 @@
   from = "/book/*"
   to = "/book/index.html"
   status = 200
+
+# Stripe return pages for undated item purchases (create-checkout-session sends
+# buyers to the extensionless paths, with ?session_id= on success).
+[[redirects]]
+  from = "/shop/success"
+  to = "/shop/success/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/shop/cancelled"
+  to = "/shop/cancelled/index.html"
+  status = 200

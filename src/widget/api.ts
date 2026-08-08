@@ -85,6 +85,28 @@ export interface PublicCoursesResult {
   suggest_interest_form: boolean;
 }
 
+/**
+ * An undated product a customer can buy at any time (a book, an e-learning
+ * course) rather than a dated class. `id` is the franchisee-product id — that
+ * is what checkout expects as `franchisee_product_id`.
+ */
+export interface ItemCard {
+  id: string;
+  product_id: string;
+  name: string;
+  description: string | null;
+  kind: 'physical' | 'elearning';
+  price_pence: number;
+  /** VAT rate percentage — when set, prices show "incl. VAT @ {rate}%". */
+  vat_rate: number | null;
+  franchisee_id: string;
+  franchisee_name: string;
+}
+
+export interface PublicItemsResult {
+  items: ItemCard[];
+}
+
 export interface InterestFormInput {
   postcode: string;
   num_attendees: number;
@@ -145,10 +167,32 @@ export function submitInterestForm(input: InterestFormInput): Promise<{ ok: true
   return call<{ ok: true; id: string }>('process-interest-form', input);
 }
 
+/**
+ * Undated items for a franchisee/postcode. Never throws: items are an additive
+ * extra on top of the class results, so a missing function (404 before deploy),
+ * a server error or a malformed body must all degrade to "no items" and leave
+ * the class flow completely untouched.
+ */
+export async function getPublicItems(input: {
+  franchisee_id?: string;
+  postcode?: string;
+}): Promise<ItemCard[]> {
+  try {
+    const res = await call<PublicItemsResult>('get-public-items', input);
+    return Array.isArray(res?.items) ? res.items : [];
+  } catch (err) {
+    logger.info('No purchasable items available', { error: String(err) });
+    return [];
+  }
+}
+
 export interface CheckoutInput {
   course_instance_id?: string;
   booking_token?: string;
-  ticket_type_id: string;
+  /** Dated-class path. Omitted when buying an undated item. */
+  ticket_type_id?: string;
+  /** Undated-item path — mutually exclusive with the course fields above. */
+  franchisee_product_id?: string;
   quantity: number;
   customer: { first_name: string; last_name: string; email: string; phone?: string; postcode?: string };
   discount_code?: string;

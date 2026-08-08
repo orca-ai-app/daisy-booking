@@ -2,6 +2,7 @@ import { STYLES } from './styles';
 import { formatDate, formatPence, formatTime, escapeHtml } from './format';
 import {
   getPublicCourses,
+  getPublicItems,
   getCourseByToken,
   submitInterestForm,
   validateDiscount,
@@ -9,10 +10,14 @@ import {
   errorMessage,
   SCRIPT_ORIGIN,
   type CourseCard,
+  type ItemCard,
+  type CheckoutInput,
 } from './api';
 import { logger } from './logger';
 
-type View = 'postcode' | 'searching' | 'results' | 'interest' | 'tickets';
+type View = 'postcode' | 'searching' | 'results' | 'interest' | 'tickets' | 'item';
+
+const MAX_ITEM_QUANTITY = 20;
 
 function truncate(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
@@ -27,6 +32,10 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
  * Public booking widget. Renders into a Shadow DOM so WordPress/Divi CSS can't
  * bleed in. Postcode search → course list → ticket + customer capture. The pay
  * step (Stripe Checkout redirect) is wired in Wave 11.
+ *
+ * Alongside dated classes a franchisee may offer undated items (books,
+ * e-learning) that are on sale at any time — they render under the class
+ * results and share the same customer-capture form and checkout redirect.
  */
 export class DaisyBooking extends HTMLElement {
   private root: ShadowRoot;
@@ -34,6 +43,8 @@ export class DaisyBooking extends HTMLElement {
   private postcode = '';
   private courses: CourseCard[] = [];
   private selected: CourseCard | null = null;
+  private items: ItemCard[] = [];
+  private selectedItem: ItemCard | null = null;
   private error = '';
   private busy = false;
   private canRetrySearch = false;
@@ -58,6 +69,9 @@ export class DaisyBooking extends HTMLElement {
       return;
     }
     this.render();
+    // Franchisee-filtered embed: their undated items are on sale regardless of
+    // postcode, so surface them on the landing view too.
+    if (this.franchiseeId) void this.loadItems();
   }
 
   private async loadByToken(token: string) {
@@ -113,6 +127,27 @@ export class DaisyBooking extends HTMLElement {
       this.view = 'postcode';
     }
     this.render();
+    // Items are an additive extra — fetch them after the classes are on screen
+    // so they can never delay or break the search itself.
+    void this.loadItems();
+  }
+
+  /**
+   * Load the franchisee's undated items and, when there are any, re-render so
+   * the "Available any time" section appears. getPublicItems never throws, so a
+   * missing/failing endpoint simply leaves `items` empty and renders nothing.
+   */
+  private async loadItems() {
+    if (!this.franchiseeId && !this.postcode.trim()) return;
+    const items = await getPublicItems({
+      franchisee_id: this.franchiseeId,
+      postcode: this.postcode.trim() || undefined,
+    });
+    if (items.length === 0) return;
+    this.items = items;
+    // Only repaint the list views — never clobber a form the customer is
+    // partway through filling in.
+    if (this.view === 'results' || this.view === 'interest') this.render();
   }
 
   private selectCourse(id: string) {
@@ -124,6 +159,15 @@ export class DaisyBooking extends HTMLElement {
       // The results list may be stale by the time a parent opens the checkout
       // step — re-check availability before they fill in the whole form.
       void this.refreshSpots();
+    }
+  }
+
+  private selectItem(id: string) {
+    this.selectedItem = this.items.find((i) => i.id === id) ?? null;
+    if (this.selectedItem) {
+      this.view = 'item';
+      this.error = '';
+      this.render();
     }
   }
 
@@ -210,6 +254,59 @@ export class DaisyBooking extends HTMLElement {
     this.error = '';
     this.busy = true;
     this.render();
+    await this.startCheckout({
+      course_instance_id: this.selected!.id,
+      ticket_type_id: ticketId,
+      quantity: 1,
+      discount_code: discountCode || undefined,
+      customer: this.readCustomer(data),
+    });
+  }
+
+  private async buyItem(form: HTMLFormElement) {
+    const data = new FormData(form);
+    const item = this.selectedItem!;
+    const first = String(data.get('name') ?? '').trim();
+    const last = String(data.get('last') ?? '').trim();
+    const email = String(data.get('email') ?? '').trim();
+    if (!first || !last || !EMAIL_RE.test(email)) {
+      this.error = 'Please enter your first name, last name and a valid email.';
+      this.render();
+      return;
+    }
+    // E-learning is one access code per purchase; physical items can be bought
+    // in multiples.
+    const requested = item.kind === 'elearning' ? 1 : Number(data.get('quantity') ?? 1);
+    const quantity =
+      Number.isFinite(requested) && requested >= 1
+        ? Math.min(Math.floor(requested), MAX_ITEM_QUANTITY)
+        : 1;
+    this.error = '';
+    this.busy = true;
+    this.render();
+    await this.startCheckout({
+      franchisee_product_id: item.id,
+      quantity,
+      customer: this.readCustomer(data),
+    });
+  }
+
+  private readCustomer(data: FormData): CheckoutInput['customer'] {
+    return {
+      first_name: String(data.get('name') ?? '').trim(),
+      last_name: String(data.get('last') ?? '').trim(),
+      email: String(data.get('email') ?? '').trim(),
+      phone: String(data.get('phone') ?? '').trim() || undefined,
+      postcode: String(data.get('postcode') ?? '').trim() || undefined,
+    };
+  }
+
+  /**
+   * Shared payment hand-off for both classes and items: create the session,
+   * then send the customer to Stripe. Assumes the caller has already set
+   * `busy` and re-rendered (the payment tab must be opened on the click).
+   */
+  private async startCheckout(input: Omit<CheckoutInput, 'origin'>) {
     // Open the payment tab SYNCHRONOUSLY on the click (popup blockers allow
     // it here, not after the await) so the customer keeps the website open to
     // check details while paying (Jenni, M3 feedback §2). If the browser
@@ -222,17 +319,7 @@ export class DaisyBooking extends HTMLElement {
     }
     try {
       const { checkout_url } = await createCheckoutSession({
-        course_instance_id: this.selected!.id,
-        ticket_type_id: ticketId,
-        quantity: 1,
-        discount_code: discountCode || undefined,
-        customer: {
-          first_name: first,
-          last_name: last,
-          email,
-          phone: String(data.get('phone') ?? '').trim() || undefined,
-          postcode: String(data.get('postcode') ?? '').trim() || undefined,
-        },
+        ...input,
         // The booking site's own origin (where /booking/success lives) — NOT
         // the embedding page's origin (WordPress has no success page).
         origin: SCRIPT_ORIGIN,
@@ -304,6 +391,8 @@ export class DaisyBooking extends HTMLElement {
         return this.interestView();
       case 'tickets':
         return this.ticketsView();
+      case 'item':
+        return this.itemView();
       default:
         return this.postcodeView();
     }
@@ -321,7 +410,8 @@ export class DaisyBooking extends HTMLElement {
         <button class="primary" type="submit">Search</button>
         ${this.error ? `<p class="error" role="alert">${escapeHtml(this.error)}</p>` : ''}
         ${this.error && this.canRetrySearch ? `<button class="retry" type="button" data-retry>Try again</button>` : ''}
-      </form>`;
+      </form>
+      ${this.itemsSection()}`;
   }
 
   private resultsView(): string {
@@ -331,7 +421,8 @@ export class DaisyBooking extends HTMLElement {
         <div class="empty">
           <h2>No upcoming classes near ${escapeHtml(this.postcode.toUpperCase())}</h2>
           <p class="sub">There are no classes scheduled here just yet. Please check back soon.</p>
-        </div>`;
+        </div>
+        ${this.itemsSection()}`;
     }
     const cards = this.courses
       .map((c) => {
@@ -355,7 +446,7 @@ export class DaisyBooking extends HTMLElement {
           </div>`;
       })
       .join('');
-    return `${this.backBtn()}<h2>Classes near ${escapeHtml(this.postcode.toUpperCase())}</h2><p class="sub">${this.courses.length} upcoming</p>${cards}`;
+    return `${this.backBtn()}<h2>Classes near ${escapeHtml(this.postcode.toUpperCase())}</h2><p class="sub">${this.courses.length} upcoming · each has a date and a venue</p>${cards}${this.itemsSection()}`;
   }
 
   private interestView(): string {
@@ -374,7 +465,8 @@ export class DaisyBooking extends HTMLElement {
         <div class="field"><label for="inotes">Please describe the course you require and anything else</label><textarea id="inotes" name="notes" rows="3"></textarea></div>
         <button class="primary" type="submit" ${this.busy ? 'disabled' : ''}>${this.busy ? 'Sending…' : 'Register interest'}</button>
         ${this.error ? `<p class="error" role="alert">${escapeHtml(this.error)}</p>` : ''}
-      </form>`;
+      </form>
+      ${this.itemsSection()}`;
   }
 
   private ticketsView(): string {
@@ -383,10 +475,7 @@ export class DaisyBooking extends HTMLElement {
       .map((t, i) => {
         // Both fields are optional until the API ships them — render nothing
         // when absent.
-        const vat =
-          typeof t.vat_rate === 'number' && t.vat_rate > 0
-            ? ` <span style="font-size:12px;color:var(--daisy-muted);">incl. VAT @ ${t.vat_rate}%</span>`
-            : '';
+        const vat = this.vatNote(t.vat_rate);
         const session = t.session_label
           ? `<span style="font-size:12px;color:var(--daisy-muted);">${escapeHtml(t.session_label)}</span>`
           : '';
@@ -408,6 +497,20 @@ export class DaisyBooking extends HTMLElement {
       ${c.template_description ? `<p class="desc full">${escapeHtml(c.template_description)}</p>` : ''}
       <form class="tickets">
         <div class="field"><label>Ticket</label>${tickets}</div>
+        ${this.customerFields()}
+        <div class="field">
+          <label for="tdiscount">Discount code (optional)</label>
+          <input id="tdiscount" name="discount" placeholder="Have a code?" />
+          <p class="discount-note" style="font-size:12px;margin:6px 0 0;"></p>
+        </div>
+        <button class="primary" type="submit" ${this.busy ? 'disabled' : ''}>${this.busy ? 'Starting payment…' : 'Continue to payment'}</button>
+        ${this.error ? `<p class="error" role="alert">${escapeHtml(this.error)}</p>` : ''}
+      </form>`;
+  }
+
+  /** Customer capture, shared by the class ticket form and the item buy form. */
+  private customerFields(): string {
+    return `
         <div class="row">
           <div class="field"><label for="tname">First name</label><input id="tname" name="name" /></div>
           <div class="field"><label for="tlast">Last name</label><input id="tlast" name="last" /></div>
@@ -416,12 +519,79 @@ export class DaisyBooking extends HTMLElement {
         <div class="row">
           <div class="field"><label for="tphone">Phone (optional)</label><input id="tphone" name="phone" /></div>
           <div class="field"><label for="tpc">Postcode (optional)</label><input id="tpc" name="postcode" /></div>
-        </div>
+        </div>`;
+  }
+
+  /** "incl. VAT @ N%" note, rendered only when the API supplies a rate. */
+  private vatNote(rate: number | null | undefined): string {
+    return typeof rate === 'number' && rate > 0
+      ? ` <span style="font-size:12px;color:var(--daisy-muted);">incl. VAT @ ${rate}%</span>`
+      : '';
+  }
+
+  /**
+   * "Available any time" — undated items shown beneath the class results.
+   * Returns '' when there are none, so the class flow is untouched whenever the
+   * items endpoint is missing, failing or simply empty.
+   */
+  private itemsSection(): string {
+    if (this.items.length === 0) return '';
+    const cards = this.items
+      .map((item) => {
+        const elearning = item.kind === 'elearning';
+        const tag = elearning ? 'E-learning' : 'Book';
+        return `
+          <div class="card item" data-item-id="${escapeHtml(item.id)}" role="button" tabindex="0">
+            <div class="tag ${elearning ? 'elearning' : 'physical'}">${tag}</div>
+            <h3>${escapeHtml(item.name)}</h3>
+            ${item.description ? `<p class="desc">${escapeHtml(truncate(item.description, 140))}</p>` : ''}
+            <div class="meta">
+              <span class="price">${formatPence(item.price_pence)}${this.vatNote(item.vat_rate)}</span>
+            </div>
+            <button class="buy" type="button" data-item-id="${escapeHtml(item.id)}">Buy now</button>
+          </div>`;
+      })
+      .join('');
+    return `
+      <h2 class="items-head">Available any time</h2>
+      <p class="sub">No date needed — buy these online whenever you like.</p>
+      ${cards}`;
+  }
+
+  private itemView(): string {
+    const item = this.selectedItem!;
+    const elearning = item.kind === 'elearning';
+    // Items can be reached from the results list or straight off the landing
+    // view of a franchisee embed — go back wherever the customer came from.
+    const back: View = this.courses.length > 0 ? 'results' : 'postcode';
+    const quantity = elearning
+      ? ''
+      : `
         <div class="field">
-          <label for="tdiscount">Discount code (optional)</label>
-          <input id="tdiscount" name="discount" placeholder="Have a code?" />
-          <p class="discount-note" style="font-size:12px;margin:6px 0 0;"></p>
-        </div>
+          <label for="iqty">How many?</label>
+          <select id="iqty" name="quantity">
+            ${Array.from(
+              { length: MAX_ITEM_QUANTITY },
+              (_, n) => `<option value="${n + 1}">${n + 1}</option>`,
+            ).join('')}
+          </select>
+        </div>`;
+    const delivery = elearning
+      ? `<div class="notice">This is an online course — there's no class to attend. Once you've paid,
+      we'll email you the link and your access details so you can start whenever suits you.</div>`
+      : `<div class="notice">This is a physical item bought online, not a class. We'll confirm your
+      order by email and post it out to you.</div>`;
+    return `
+      ${this.backBtn(back)}
+      <div class="tag ${elearning ? 'elearning' : 'physical'}">${elearning ? 'E-learning' : 'Book'}</div>
+      <h2>${escapeHtml(item.name)}</h2>
+      <p class="sub">Sold by ${escapeHtml(item.franchisee_name)}</p>
+      ${item.description ? `<p class="desc full">${escapeHtml(item.description)}</p>` : ''}
+      ${delivery}
+      <p class="total">${formatPence(item.price_pence)}${this.vatNote(item.vat_rate)}</p>
+      <form class="item-buy">
+        ${quantity}
+        ${this.customerFields()}
         <button class="primary" type="submit" ${this.busy ? 'disabled' : ''}>${this.busy ? 'Starting payment…' : 'Continue to payment'}</button>
         ${this.error ? `<p class="error" role="alert">${escapeHtml(this.error)}</p>` : ''}
       </form>`;
@@ -467,7 +637,8 @@ export class DaisyBooking extends HTMLElement {
       }),
     );
 
-    this.root.querySelectorAll('.card').forEach((el) => {
+    // `:not(.item)` — item cards share the .card styling but have their own handler.
+    this.root.querySelectorAll('.card:not(.item)').forEach((el) => {
       const go = () => this.guard('select-course', () => this.selectCourse((el as HTMLElement).dataset.id!));
       el.addEventListener('click', go);
       el.addEventListener('keydown', (e) => {
@@ -476,6 +647,32 @@ export class DaisyBooking extends HTMLElement {
           go();
         }
       });
+    });
+
+    this.root.querySelectorAll('.card.item').forEach((el) => {
+      const go = () =>
+        this.guard('select-item', () => this.selectItem((el as HTMLElement).dataset.itemId!));
+      el.addEventListener('click', go);
+      el.addEventListener('keydown', (e) => {
+        if ((e as KeyboardEvent).key === 'Enter' || (e as KeyboardEvent).key === ' ') {
+          e.preventDefault();
+          go();
+        }
+      });
+    });
+
+    // The Buy button lives inside the clickable card — stop the click bubbling
+    // so the card handler doesn't fire a second time.
+    this.root.querySelectorAll('button.buy').forEach((el) =>
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.guard('buy-item', () => this.selectItem((el as HTMLElement).dataset.itemId!));
+      }),
+    );
+
+    this.root.querySelector('form.item-buy')?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.guard('item-checkout', () => this.buyItem(e.target as HTMLFormElement));
     });
 
     this.root.querySelectorAll('[data-back]').forEach((el) =>

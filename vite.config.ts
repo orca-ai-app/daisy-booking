@@ -22,6 +22,12 @@ export default defineConfig({
   },
   build: {
     target: 'es2021',
+    // The standalone pages (/book/:token, /booking/success, /booking/cancelled,
+    // /shop/success, /shop/cancelled) are hand-written HTML under public/ and
+    // are copied verbatim into dist/ — they are deliberately NOT rollup inputs,
+    // because a lib build takes a single entry and adding inputs would break the
+    // one-file widget bundle below.
+    //
     // Single self-contained IIFE bundle at a versioned path so v2 can ship
     // later without breaking live embeds. One <script> tag, no chunks.
     lib: {
