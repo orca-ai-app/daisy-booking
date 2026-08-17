@@ -66,6 +66,12 @@ export interface CourseCard {
   display_name?: string | null;
   template_slug: string;
   template_description: string | null;
+  /**
+   * The franchisee's own description for this one class. Optional: absent until
+   * the API ships it, and null whenever they haven't written one — either way
+   * the widget falls back to template_description.
+   */
+  description_override?: string | null;
   age_range: string | null;
   event_date: string;
   start_time: string;
@@ -75,14 +81,48 @@ export interface CourseCard {
   distance_miles: number | null;
   franchisee_name: string;
   capacity: number;
+  /**
+   * Places left in the class's ONE shared pool. Every ticket type draws from it,
+   * so this is the only stock figure there is.
+   */
   spots_remaining: number;
+  /**
+   * Sent by the API since round 2 (G4). Optional so an older deploy still works:
+   * `isSoldOut()` falls back to spots_remaining.
+   */
+  sold_out?: boolean;
   ticket_types: TicketType[];
+}
+
+/** True when the class is full. Prefers the server's flag, falls back to the count. */
+export function isSoldOut(c: CourseCard): boolean {
+  return c.sold_out ?? c.spots_remaining <= 0;
+}
+
+/**
+ * Places a ticket consumes. Defaults to 1 so a ticket type that predates
+ * seats_consumed (or an API that omits it) is never treated as free of charge
+ * against the pool.
+ */
+export function seatsFor(t: TicketType): number {
+  return Number.isFinite(t.seats_consumed) && t.seats_consumed >= 1 ? t.seats_consumed : 1;
+}
+
+/**
+ * The description to show for a class: the franchisee's own wording when they
+ * have written one (G1), otherwise the template's. Defensive about a missing or
+ * blank override so it simply falls back.
+ */
+export function courseDescription(c: CourseCard): string {
+  return c.description_override?.trim() || c.template_description?.trim() || '';
 }
 
 export interface PublicCoursesResult {
   courses: CourseCard[];
   territory_status: 'active' | 'vacant' | 'none';
   suggest_interest_form: boolean;
+  /** Place name the server matched a town/area search to (G8). */
+  resolved_location?: string;
 }
 
 /**
@@ -150,6 +190,10 @@ async function call<T>(path: string, body: unknown): Promise<T> {
   }
 }
 
+/**
+ * `postcode` accepts a UK postcode OR a town/area name (G8) — the server
+ * geocodes whichever it is, so the widget never has to tell them apart.
+ */
 export function getPublicCourses(input: {
   postcode: string;
   franchisee_id?: string;
@@ -194,7 +238,8 @@ export interface CheckoutInput {
   /** Undated-item path — mutually exclusive with the course fields above. */
   franchisee_product_id?: string;
   quantity: number;
-  customer: { first_name: string; last_name: string; email: string; phone?: string; postcode?: string };
+  /** Phone and postcode are compulsory since round 2 (G3) — the server rejects a booking without them. */
+  customer: { first_name: string; last_name: string; email: string; phone: string; postcode: string };
   discount_code?: string;
   origin?: string;
 }

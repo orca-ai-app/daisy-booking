@@ -21,14 +21,16 @@
       <h1>Thank you — your order is confirmed</h1>
       <p>
         Your payment went through and a confirmation email is on its way. If you've bought an
-        e-learning course, your access link is in that email — do check your junk folder if it
-        doesn't arrive within a few minutes.
+        e-learning course, we'll set up your access and email the details separately, typically
+        within 48 hours. Do check your junk folder if nothing arrives.
       </p>
       <p id="ref" hidden>Order reference: <span class="ref"></span></p>
     </div>
     <script>
       // The sale is recorded server-side by the Stripe webhook, which also
-      // queues the confirmation email carrying the e-learning access link.
+      // queues the confirmation email. E-learning access is NOT in that email
+      // (F8): Daisy enrol each buyer by hand through elearnhere and send the
+      // details separately, typically within 48 hours.
       // This page is purely the friendly landing — nothing is looked up here.
       // Item checkouts only carry ?session_id=, so show its last 8 as a
       // reference the buyer can quote.

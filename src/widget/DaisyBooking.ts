@@ -8,9 +8,13 @@ import {
   validateDiscount,
   createCheckoutSession,
   errorMessage,
+  isSoldOut,
+  courseDescription,
+  seatsFor,
   SCRIPT_ORIGIN,
   type CourseCard,
   type ItemCard,
+  type TicketType,
   type CheckoutInput,
 } from './api';
 import { logger } from './logger';
@@ -25,6 +29,11 @@ function truncate(text: string, max: number): string {
 
 const UK_POSTCODE_RE = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+// Loosest possible phone check (G3): people write +44, 0044, spaces, brackets
+// and dashes, and rejecting a real number is far worse than accepting an odd
+// one. Just insist on enough digits to be a phone number at all.
+const PHONE_DIGITS_RE = /\d/g;
+const MIN_PHONE_DIGITS = 10;
 
 /**
  * <daisy-booking franchisee="0042" theme="light" radius="15">
@@ -40,7 +49,10 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 export class DaisyBooking extends HTMLElement {
   private root: ShadowRoot;
   private view: View = 'postcode';
+  /** What the customer typed into the search box: a postcode OR a town (G8). */
   private postcode = '';
+  /** The place name the server matched a town search to, when it was a town. */
+  private resolvedLocation: string | null = null;
   private courses: CourseCard[] = [];
   private selected: CourseCard | null = null;
   private items: ItemCard[] = [];
@@ -104,8 +116,10 @@ export class DaisyBooking extends HTMLElement {
 
   private async search() {
     const pc = this.postcode.trim();
-    if (!UK_POSTCODE_RE.test(pc)) {
-      this.error = 'Please enter a valid UK postcode.';
+    // G8: a postcode OR a town/area. The server geocodes either, so the only
+    // thing worth rejecting here is an input too short to mean anything.
+    if (pc.length < 2) {
+      this.error = 'Please enter a postcode or a town.';
       this.render();
       return;
     }
@@ -120,6 +134,9 @@ export class DaisyBooking extends HTMLElement {
         radius_miles: this.radius,
       });
       this.courses = result.courses;
+      // When we searched a town, show the place the server actually matched
+      // ("Chipping Norton") rather than echoing back what was typed.
+      this.resolvedLocation = result.resolved_location ?? null;
       this.view = result.courses.length > 0 ? 'results' : result.suggest_interest_form ? 'interest' : 'results';
     } catch (err) {
       this.error = errorMessage(err, 'Could not search right now.');
@@ -151,7 +168,10 @@ export class DaisyBooking extends HTMLElement {
   }
 
   private selectCourse(id: string) {
-    this.selected = this.courses.find((c) => c.id === id) ?? null;
+    const course = this.courses.find((c) => c.id === id) ?? null;
+    // Sold-out classes are listed (G4) but not bookable — the card is inert.
+    if (course && isSoldOut(course)) return;
+    this.selected = course;
     if (this.selected) {
       this.view = 'tickets';
       this.error = '';
@@ -184,8 +204,14 @@ export class DaisyBooking extends HTMLElement {
       // Bail if the user has already navigated away from this course.
       if (this.view !== 'tickets' || this.selected?.id !== course.id) return;
       const fresh = result.courses.find((c) => c.id === course.id);
-      if (fresh && fresh.spots_remaining > 0) {
+      if (fresh && !isSoldOut(fresh)) {
+        // Places may have gone since the search without the class selling out.
+        // Re-render so the shared-pool count and each ticket's availability
+        // (G11) reflect the truth — safe here because a partial sale can only
+        // be detected on entry to this view, before anything has been typed.
+        const changed = fresh.spots_remaining !== course.spots_remaining;
         this.selected = fresh;
+        if (changed) this.render();
         return;
       }
       // Patch the DOM in place (a full re-render would wipe anything typed).
@@ -242,12 +268,22 @@ export class DaisyBooking extends HTMLElement {
   private async continueToPayment(form: HTMLFormElement) {
     const data = new FormData(form);
     const ticketId = String(data.get('ticket') ?? '');
-    const first = String(data.get('name') ?? '').trim();
-    const last = String(data.get('last') ?? '').trim();
-    const email = String(data.get('email') ?? '').trim();
     const discountCode = String(data.get('discount') ?? '').trim();
-    if (!ticketId || !first || !last || !EMAIL_RE.test(email)) {
-      this.error = 'Please choose a ticket and enter your first name, last name and a valid email.';
+    if (!ticketId) {
+      this.error = 'Please choose a ticket.';
+      this.render();
+      return;
+    }
+    // G11: never let a customer pay for a ticket the class can no longer seat.
+    const ticket = this.selected!.ticket_types.find((t) => t.id === ticketId);
+    if (ticket && seatsFor(ticket) > this.selected!.spots_remaining) {
+      this.error = 'That ticket needs more places than this class has left. Please choose another.';
+      this.render();
+      return;
+    }
+    const invalid = this.customerError(data);
+    if (invalid) {
+      this.error = invalid;
       this.render();
       return;
     }
@@ -266,11 +302,9 @@ export class DaisyBooking extends HTMLElement {
   private async buyItem(form: HTMLFormElement) {
     const data = new FormData(form);
     const item = this.selectedItem!;
-    const first = String(data.get('name') ?? '').trim();
-    const last = String(data.get('last') ?? '').trim();
-    const email = String(data.get('email') ?? '').trim();
-    if (!first || !last || !EMAIL_RE.test(email)) {
-      this.error = 'Please enter your first name, last name and a valid email.';
+    const invalid = this.customerError(data);
+    if (invalid) {
+      this.error = invalid;
       this.render();
       return;
     }
@@ -291,13 +325,37 @@ export class DaisyBooking extends HTMLElement {
     });
   }
 
+  /**
+   * Validate the shared customer fields. Returns a message to show, or '' when
+   * everything is fine. Phone and postcode are compulsory (G3): franchisees
+   * could not chase a no-show or confirm the right class without them. One
+   * message at a time, naming the field, so the customer knows what to fix.
+   */
+  private customerError(data: FormData): string {
+    const first = String(data.get('name') ?? '').trim();
+    const last = String(data.get('last') ?? '').trim();
+    const email = String(data.get('email') ?? '').trim();
+    const phone = String(data.get('phone') ?? '').trim();
+    const postcode = String(data.get('postcode') ?? '').trim();
+    if (!first) return 'Please enter your first name.';
+    if (!last) return 'Please enter your last name.';
+    if (!EMAIL_RE.test(email)) return 'Please enter a valid email address.';
+    if (!phone) return 'Please enter your phone number, so we can reach you about your booking.';
+    if ((phone.match(PHONE_DIGITS_RE) ?? []).length < MIN_PHONE_DIGITS) {
+      return 'Please enter a valid phone number.';
+    }
+    if (!postcode) return 'Please enter your postcode.';
+    if (!UK_POSTCODE_RE.test(postcode)) return 'Please enter a valid UK postcode.';
+    return '';
+  }
+
   private readCustomer(data: FormData): CheckoutInput['customer'] {
     return {
       first_name: String(data.get('name') ?? '').trim(),
       last_name: String(data.get('last') ?? '').trim(),
       email: String(data.get('email') ?? '').trim(),
-      phone: String(data.get('phone') ?? '').trim() || undefined,
-      postcode: String(data.get('postcode') ?? '').trim() || undefined,
+      phone: String(data.get('phone') ?? '').trim(),
+      postcode: String(data.get('postcode') ?? '').trim(),
     };
   }
 
@@ -401,11 +459,12 @@ export class DaisyBooking extends HTMLElement {
   private postcodeView(): string {
     return `
       <h2>Find a first aid class near you</h2>
-      <p class="sub">Enter your postcode to see upcoming Daisy First Aid classes.</p>
+      <p class="sub">Enter your postcode or town to see upcoming Daisy First Aid classes.</p>
       <form class="search">
         <div class="field">
-          <label for="pc">Postcode</label>
-          <input id="pc" name="postcode" placeholder="e.g. SW11 1AA" value="${escapeHtml(this.postcode)}" autocomplete="postal-code" />
+          <label for="pc">Postcode or town</label>
+          <input id="pc" name="postcode" placeholder="e.g. SW11 1AA or Battersea" value="${escapeHtml(this.postcode)}" autocomplete="postal-code" />
+          <p class="hint">A postcode or a town name both work.</p>
         </div>
         <button class="primary" type="submit">Search</button>
         ${this.error ? `<p class="error" role="alert">${escapeHtml(this.error)}</p>` : ''}
@@ -414,12 +473,21 @@ export class DaisyBooking extends HTMLElement {
       ${this.itemsSection()}`;
   }
 
+  /**
+   * How the searched area is written back to the customer. A town search shows
+   * the place the server matched ("Chipping Norton"); a postcode is upper-cased
+   * as before. Upper-casing a town name would shout it.
+   */
+  private get locationLabel(): string {
+    return this.resolvedLocation ?? this.postcode.toUpperCase();
+  }
+
   private resultsView(): string {
     if (this.courses.length === 0) {
       return `
         ${this.backBtn()}
         <div class="empty">
-          <h2>No upcoming classes near ${escapeHtml(this.postcode.toUpperCase())}</h2>
+          <h2>No upcoming classes near ${escapeHtml(this.locationLabel)}</h2>
           <p class="sub">There are no classes scheduled here just yet. Please check back soon.</p>
         </div>
         ${this.itemsSection()}`;
@@ -428,25 +496,50 @@ export class DaisyBooking extends HTMLElement {
       .map((c) => {
         const priceFrom = c.ticket_types.length
           ? Math.min(...c.ticket_types.map((t) => t.price_pence))
-          : c.ticket_types[0]?.price_pence ?? 0;
+          : 0;
         const dist = c.distance_miles != null ? ` · ${c.distance_miles} mi` : '';
-        const low = c.spots_remaining <= 3;
+        const full = isSoldOut(c);
+        const desc = courseDescription(c);
         return `
-          <div class="card" data-id="${c.id}" role="button" tabindex="0">
+          <div class="card${full ? ' full' : ''}" data-id="${c.id}"
+               ${full ? 'aria-disabled="true"' : 'role="button" tabindex="0"'}>
             <h3>${escapeHtml(c.template_name)}</h3>
             ${c.age_range ? `<div class="agerange">Suitable for ${escapeHtml(c.age_range)}</div>` : ''}
-            ${c.template_description ? `<p class="desc">${escapeHtml(truncate(c.template_description, 140))}</p>` : ''}
+            ${desc ? `<p class="desc">${escapeHtml(truncate(desc, 140))}</p>` : ''}
             <div class="meta">
               <span>${formatDate(c.event_date)}</span>
               <span>${formatTime(c.start_time)}–${formatTime(c.end_time)}</span>
               <span>${escapeHtml(c.venue_name ?? c.venue_postcode ?? '')}${dist}</span>
               <span class="price">from ${formatPence(priceFrom)}</span>
             </div>
-            <div class="spots ${low ? 'low' : ''}">${c.spots_remaining} place${c.spots_remaining === 1 ? '' : 's'} left</div>
+            ${this.spotsLine(c)}
           </div>`;
       })
       .join('');
-    return `${this.backBtn()}<h2>Classes near ${escapeHtml(this.postcode.toUpperCase())}</h2><p class="sub">${this.courses.length} upcoming · each has a date and a venue</p>${cards}${this.itemsSection()}`;
+    // Count what they can actually book, and mention the full ones separately,
+    // rather than claiming N upcoming when some are closed (G4).
+    const soldOut = this.courses.filter((c) => isSoldOut(c)).length;
+    const open = this.courses.length - soldOut;
+    const summary =
+      soldOut === 0
+        ? `${open} upcoming · each has a date and a venue`
+        : open === 0
+          ? `${soldOut} upcoming, all currently full`
+          : `${open} available · ${soldOut} currently full`;
+    return `${this.backBtn()}<h2>Classes near ${escapeHtml(this.locationLabel)}</h2><p class="sub">${summary}</p>${cards}${this.itemsSection()}`;
+  }
+
+  /**
+   * The one true availability line for a class (G11). Every ticket type draws
+   * from the SAME pool, so the remaining number is shown once, on the class,
+   * never per ticket.
+   */
+  private spotsLine(c: CourseCard): string {
+    if (isSoldOut(c)) {
+      return `<div class="spots out">Sold out</div>`;
+    }
+    const low = c.spots_remaining <= 3;
+    return `<div class="spots ${low ? 'low' : ''}">${c.spots_remaining} place${c.spots_remaining === 1 ? '' : 's'} left</div>`;
   }
 
   private interestView(): string {
@@ -471,54 +564,98 @@ export class DaisyBooking extends HTMLElement {
 
   private ticketsView(): string {
     const c = this.selected!;
-    const tickets = c.ticket_types
-      .map((t, i) => {
-        // Both fields are optional until the API ships them — render nothing
-        // when absent.
-        const vat = this.vatNote(t.vat_rate);
-        const session = t.session_label
-          ? `<span style="font-size:12px;color:var(--daisy-muted);">${escapeHtml(t.session_label)}</span>`
-          : '';
-        return `
-        <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-weight:500;color:var(--daisy-ink);margin-bottom:8px;">
-          <input type="radio" name="ticket" value="${t.id}" ${i === 0 ? 'checked' : ''} style="width:auto;" />
-          <span style="display:flex;flex-direction:column;">
-            <span>${escapeHtml(t.name)} — ${formatPence(t.price_pence)}${vat}</span>
-            ${session}
-          </span>
-        </label>`;
-      })
-      .join('');
+    const remaining = c.spots_remaining;
+    // A ticket is purchasable only if the shared pool can seat it (G11).
+    const affordable = c.ticket_types.filter((t) => seatsFor(t) <= remaining);
+    const firstAffordableId = affordable[0]?.id;
+    const tickets = c.ticket_types.map((t) => this.ticketOption(t, remaining, firstAffordableId)).join('');
+    const desc = courseDescription(c);
+    const canBook = !isSoldOut(c) && affordable.length > 0;
     return `
       ${this.backBtn('results')}
       <h2>${escapeHtml(c.display_name || c.template_name)}</h2>
       <p class="sub">${formatDate(c.event_date)} · ${formatTime(c.start_time)}–${formatTime(c.end_time)} · ${escapeHtml(c.venue_name ?? c.venue_postcode ?? '')}</p>
       ${c.age_range ? `<div class="agerange">Suitable for ${escapeHtml(c.age_range)}</div>` : ''}
-      ${c.template_description ? `<p class="desc full">${escapeHtml(c.template_description)}</p>` : ''}
+      ${desc ? `<p class="desc full">${escapeHtml(desc)}</p>` : ''}
+      ${this.spotsLine(c)}
+      ${
+        canBook
+          ? ''
+          : `<div class="notice warn" role="alert">${
+              isSoldOut(c)
+                ? 'This class is sold out. Please go back and choose another class.'
+                : 'There are not enough places left for any of the tickets on this class.'
+            }</div>`
+      }
       <form class="tickets">
-        <div class="field"><label>Ticket</label>${tickets}</div>
+        <div class="field">
+          <label>Ticket</label>
+          ${
+            remaining > 0
+              ? `<p class="pool">All tickets come out of the same ${remaining} remaining place${remaining === 1 ? '' : 's'}.</p>`
+              : ''
+          }
+          ${tickets}
+        </div>
         ${this.customerFields()}
         <div class="field">
           <label for="tdiscount">Discount code (optional)</label>
           <input id="tdiscount" name="discount" placeholder="Have a code?" />
           <p class="discount-note" style="font-size:12px;margin:6px 0 0;"></p>
         </div>
-        <button class="primary" type="submit" ${this.busy ? 'disabled' : ''}>${this.busy ? 'Starting payment…' : 'Continue to payment'}</button>
+        <button class="primary" type="submit" ${this.busy || !canBook ? 'disabled' : ''}>${this.busy ? 'Starting payment…' : 'Continue to payment'}</button>
         ${this.error ? `<p class="error" role="alert">${escapeHtml(this.error)}</p>` : ''}
       </form>`;
   }
 
-  /** Customer capture, shared by the class ticket form and the item buy form. */
+  /**
+   * One ticket radio (G11). Every ticket draws on the class's single shared
+   * pool, so a ticket needing more places than remain is disabled and says why
+   * rather than being hidden: seeing "Couples — not enough places left" tells
+   * the customer something useful, silently dropping the option does not.
+   */
+  private ticketOption(t: TicketType, remaining: number, firstAffordableId?: string): string {
+    // Both fields are optional until the API ships them — render nothing when absent.
+    const vat = this.vatNote(t.vat_rate);
+    const session = t.session_label
+      ? `<span style="font-size:12px;color:var(--daisy-muted);">${escapeHtml(t.session_label)}</span>`
+      : '';
+    const seats = seatsFor(t);
+    const available = seats <= remaining;
+    // Only ever pre-select something the customer can actually buy.
+    const checked = available && t.id === firstAffordableId ? 'checked' : '';
+    // "Uses 2 places" is worth spelling out for a Couples/family ticket, and
+    // meaningless for a single, so only say it when it is more than one.
+    const seatNote = seats > 1 ? `Uses ${seats} places` : '';
+    const note = available
+      ? seatNote
+      : `Not enough places left${seats > 1 ? ` — needs ${seats} places` : ''}`;
+    return `
+        <label class="ticket${available ? '' : ' unavailable'}">
+          <input type="radio" name="ticket" value="${t.id}" ${checked} ${available ? '' : 'disabled'} style="width:auto;" />
+          <span style="display:flex;flex-direction:column;">
+            <span>${escapeHtml(t.name)} — ${formatPence(t.price_pence)}${vat}</span>
+            ${session}
+            ${note ? `<span class="ticket-note${available ? '' : ' warn'}">${escapeHtml(note)}</span>` : ''}
+          </span>
+        </label>`;
+  }
+
+  /**
+   * Customer capture, shared by the class ticket form and the item buy form.
+   * Phone and postcode are compulsory since round 2 (G3) — field order and
+   * styling are unchanged, only the labels and the `required` flags.
+   */
   private customerFields(): string {
     return `
         <div class="row">
-          <div class="field"><label for="tname">First name</label><input id="tname" name="name" /></div>
-          <div class="field"><label for="tlast">Last name</label><input id="tlast" name="last" /></div>
+          <div class="field"><label for="tname">First name</label><input id="tname" name="name" required /></div>
+          <div class="field"><label for="tlast">Last name</label><input id="tlast" name="last" required /></div>
         </div>
-        <div class="field"><label for="temail">Email</label><input id="temail" name="email" type="email" /></div>
+        <div class="field"><label for="temail">Email</label><input id="temail" name="email" type="email" required /></div>
         <div class="row">
-          <div class="field"><label for="tphone">Phone (optional)</label><input id="tphone" name="phone" /></div>
-          <div class="field"><label for="tpc">Postcode (optional)</label><input id="tpc" name="postcode" /></div>
+          <div class="field"><label for="tphone">Phone</label><input id="tphone" name="phone" type="tel" autocomplete="tel" required /></div>
+          <div class="field"><label for="tpc">Postcode</label><input id="tpc" name="postcode" autocomplete="postal-code" required /></div>
         </div>`;
   }
 
@@ -576,9 +713,13 @@ export class DaisyBooking extends HTMLElement {
             ).join('')}
           </select>
         </div>`;
+    // F8: we do NOT hand out an access link on payment. Daisy buy licence keys
+    // and enrol each customer by hand through elearnhere, which does not happen
+    // in the evening or at the weekend, so the promise is "by email, typically
+    // within 48 hours" and never "it's in your confirmation email".
     const delivery = elearning
       ? `<div class="notice">This is an online course — there's no class to attend. Once you've paid,
-      we'll email you the link and your access details so you can start whenever suits you.</div>`
+      we'll set up your access and email your details separately, typically within 48 hours.</div>`
       : `<div class="notice">This is a physical item bought online, not a class. We'll confirm your
       order by email and post it out to you.</div>`;
     return `
@@ -637,8 +778,9 @@ export class DaisyBooking extends HTMLElement {
       }),
     );
 
-    // `:not(.item)` — item cards share the .card styling but have their own handler.
-    this.root.querySelectorAll('.card:not(.item)').forEach((el) => {
+    // `:not(.item)` — item cards share the .card styling but have their own
+    // handler. `:not(.full)` — a sold-out class is listed but inert (G4).
+    this.root.querySelectorAll('.card:not(.item):not(.full)').forEach((el) => {
       const go = () => this.guard('select-course', () => this.selectCourse((el as HTMLElement).dataset.id!));
       el.addEventListener('click', go);
       el.addEventListener('keydown', (e) => {

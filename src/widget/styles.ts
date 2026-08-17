@@ -39,6 +39,7 @@ export const STYLES = /* css */ `
   input:focus, select:focus, textarea:focus { outline: none; border-color: var(--daisy-primary); }
   input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid var(--daisy-yellow); outline-offset: 1px; }
   .field { margin-bottom: 14px; }
+  p.hint { margin: 6px 0 0; font-size: 12px; color: var(--daisy-muted); }
   .row { display: flex; gap: 12px; }
   .row > * { flex: 1; }
   button.primary {
@@ -64,6 +65,16 @@ export const STYLES = /* css */ `
   .meta .price { font-weight: 700; color: var(--daisy-primary); }
   .spots { font-size: 12px; color: var(--daisy-green); font-weight: 600; }
   .spots.low { color: var(--daisy-orange); }
+  /* Sold out (G4): the class stays listed, greyed and not clickable. */
+  .spots.out { color: var(--daisy-muted); text-transform: uppercase; letter-spacing: .04em; }
+  .card.full { cursor: default; opacity: .72; background: var(--daisy-bg); }
+  .card.full:hover { border-color: var(--daisy-line); box-shadow: none; }
+  /* Ticket options — all drawn from the class's one shared pool (G11). */
+  p.pool { margin: 0 0 10px; font-size: 12px; color: var(--daisy-muted); }
+  label.ticket { display: flex; align-items: center; gap: 8px; text-transform: none; font-weight: 500; color: var(--daisy-ink); margin-bottom: 8px; }
+  label.ticket.unavailable { color: var(--daisy-muted); }
+  .ticket-note { font-size: 12px; color: var(--daisy-muted); }
+  .ticket-note.warn { color: var(--daisy-orange); font-weight: 600; }
   /* Undated items ("Available any time") — books and e-learning. */
   h2.items-head { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--daisy-line); }
   .tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; border-radius: 999px; padding: 3px 10px; margin: 0 0 8px; }
