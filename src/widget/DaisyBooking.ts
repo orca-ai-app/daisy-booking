@@ -60,6 +60,13 @@ export class DaisyBooking extends HTMLElement {
   private error = '';
   private busy = false;
   private canRetrySearch = false;
+  /**
+   * Everything typed into the form being submitted, captured at submit.
+   * render() replaces the whole shadow DOM, so without this a validation or
+   * server error (or a declined payment) would wipe every field the customer
+   * had filled in.
+   */
+  private formValues: Record<string, string> = {};
 
   static get observedAttributes() {
     return ['franchisee', 'theme', 'radius'];
@@ -125,6 +132,9 @@ export class DaisyBooking extends HTMLElement {
     }
     this.error = '';
     this.canRetrySearch = false;
+    // A new area means new items — clear the old list now so franchisee A's
+    // shop can never sit under franchisee B's results while the fetch runs.
+    this.items = [];
     this.view = 'searching';
     this.render();
     try {
@@ -155,13 +165,26 @@ export class DaisyBooking extends HTMLElement {
    * missing/failing endpoint simply leaves `items` empty and renders nothing.
    */
   private async loadItems() {
-    if (!this.franchiseeId && !this.postcode.trim()) return;
+    const pc = this.postcode.trim();
+    // get-public-items only accepts a FULL UK postcode — a town search would
+    // be rejected with a 400. The courses response resolves a town to a place
+    // name, not an outcode, so there is nothing valid to send for a town:
+    // fall back to the franchisee filter alone (the server ignores postcode
+    // when franchisee_id is set), or skip the call entirely.
+    const postcode = UK_POSTCODE_RE.test(pc) ? pc : undefined;
+    if (!this.franchiseeId && !postcode) {
+      this.items = [];
+      return;
+    }
     const items = await getPublicItems({
       franchisee_id: this.franchiseeId,
-      postcode: this.postcode.trim() || undefined,
+      postcode,
     });
-    if (items.length === 0) return;
+    const hadItems = this.items.length > 0;
+    // Always replace — keeping a stale list would show one franchisee's shop
+    // under another area's search results.
     this.items = items;
+    if (!hadItems && items.length === 0) return;
     // Only repaint the list views — never clobber a form the customer is
     // partway through filling in.
     if (this.view === 'results' || this.view === 'interest') this.render();
@@ -233,6 +256,7 @@ export class DaisyBooking extends HTMLElement {
 
   private async submitInterest(form: HTMLFormElement) {
     const data = new FormData(form);
+    this.captureForm(data);
     const name = String(data.get('name') ?? '').trim();
     const email = String(data.get('email') ?? '').trim();
     const attendees = Number(data.get('attendees'));
@@ -243,9 +267,13 @@ export class DaisyBooking extends HTMLElement {
     }
     this.busy = true;
     this.render();
+    const pc = this.postcode.trim();
     try {
       await submitInterestForm({
-        postcode: this.postcode.trim(),
+        // A town search sends the place the server matched ("chippy" →
+        // "Chipping Norton"), not the raw typed text; a postcode goes through
+        // as typed. The raw input is the fallback when nothing resolved.
+        postcode: UK_POSTCODE_RE.test(pc) ? pc : (this.resolvedLocation ?? pc),
         num_attendees: attendees,
         contact_name: name,
         contact_email: email,
@@ -255,7 +283,7 @@ export class DaisyBooking extends HTMLElement {
       this.root.querySelector('.root')!.innerHTML = `
         <div class="empty">
           <h2>Thank you</h2>
-          <p class="sub">We've registered your interest in ${escapeHtml(this.postcode.toUpperCase())}.
+          <p class="sub">We've registered your interest in ${escapeHtml(this.locationLabel)}.
           A local trainer will be in touch.</p>
         </div>`;
     } catch (err) {
@@ -267,6 +295,7 @@ export class DaisyBooking extends HTMLElement {
 
   private async continueToPayment(form: HTMLFormElement) {
     const data = new FormData(form);
+    this.captureForm(data);
     const ticketId = String(data.get('ticket') ?? '');
     const discountCode = String(data.get('discount') ?? '').trim();
     if (!ticketId) {
@@ -301,6 +330,7 @@ export class DaisyBooking extends HTMLElement {
 
   private async buyItem(form: HTMLFormElement) {
     const data = new FormData(form);
+    this.captureForm(data);
     const item = this.selectedItem!;
     const invalid = this.customerError(data);
     if (invalid) {
@@ -347,6 +377,20 @@ export class DaisyBooking extends HTMLElement {
     if (!postcode) return 'Please enter your postcode.';
     if (!UK_POSTCODE_RE.test(postcode)) return 'Please enter a valid UK postcode.';
     return '';
+  }
+
+  /** Remember what was typed so an error re-render can put it all back. */
+  private captureForm(data: FormData) {
+    const values: Record<string, string> = {};
+    data.forEach((v, k) => {
+      if (typeof v === 'string') values[k] = v;
+    });
+    this.formValues = values;
+  }
+
+  /** `value="…"` attribute restoring a previously typed field (escaped). */
+  private val(field: string, fallback = ''): string {
+    return `value="${escapeHtml(this.formValues[field] ?? fallback)}"`;
   }
 
   private readCustomer(data: FormData): CheckoutInput['customer'] {
@@ -546,16 +590,16 @@ export class DaisyBooking extends HTMLElement {
     return `
       ${this.backBtn()}
       <h2>No classes near you yet</h2>
-      <div class="notice">We don't have a course listed in ${escapeHtml(this.postcode.toUpperCase())} right now.
+      <div class="notice">We don't have a course listed in ${escapeHtml(this.locationLabel)} right now.
       Please leave your details and we'll direct you to one nearby or help arrange a private course for your group.</div>
       <form class="interest">
-        <div class="field"><label for="iname">Your name</label><input id="iname" name="name" /></div>
-        <div class="field"><label for="iemail">Email</label><input id="iemail" name="email" type="email" /></div>
+        <div class="field"><label for="iname">Your name</label><input id="iname" name="name" ${this.val('name')} /></div>
+        <div class="field"><label for="iemail">Email</label><input id="iemail" name="email" type="email" ${this.val('email')} /></div>
         <div class="row">
-          <div class="field"><label for="iphone">Phone (optional)</label><input id="iphone" name="phone" /></div>
-          <div class="field"><label for="iatt">How many people?</label><input id="iatt" name="attendees" type="number" min="1" value="1" /></div>
+          <div class="field"><label for="iphone">Phone (optional)</label><input id="iphone" name="phone" ${this.val('phone')} /></div>
+          <div class="field"><label for="iatt">How many people?</label><input id="iatt" name="attendees" type="number" min="1" ${this.val('attendees', '1')} /></div>
         </div>
-        <div class="field"><label for="inotes">Please describe the course you require and anything else</label><textarea id="inotes" name="notes" rows="3"></textarea></div>
+        <div class="field"><label for="inotes">Please describe the course you require and anything else</label><textarea id="inotes" name="notes" rows="3">${escapeHtml(this.formValues.notes ?? '')}</textarea></div>
         <button class="primary" type="submit" ${this.busy ? 'disabled' : ''}>${this.busy ? 'Sending…' : 'Register interest'}</button>
         ${this.error ? `<p class="error" role="alert">${escapeHtml(this.error)}</p>` : ''}
       </form>
@@ -567,8 +611,11 @@ export class DaisyBooking extends HTMLElement {
     const remaining = c.spots_remaining;
     // A ticket is purchasable only if the shared pool can seat it (G11).
     const affordable = c.ticket_types.filter((t) => seatsFor(t) <= remaining);
-    const firstAffordableId = affordable[0]?.id;
-    const tickets = c.ticket_types.map((t) => this.ticketOption(t, remaining, firstAffordableId)).join('');
+    // Restore the ticket chosen before an error re-render, falling back to the
+    // first the customer can actually buy.
+    const remembered = affordable.find((t) => t.id === this.formValues.ticket)?.id;
+    const preselectId = remembered ?? affordable[0]?.id;
+    const tickets = c.ticket_types.map((t) => this.ticketOption(t, remaining, preselectId)).join('');
     const desc = courseDescription(c);
     const canBook = !isSoldOut(c) && affordable.length > 0;
     return `
@@ -600,7 +647,7 @@ export class DaisyBooking extends HTMLElement {
         ${this.customerFields()}
         <div class="field">
           <label for="tdiscount">Discount code (optional)</label>
-          <input id="tdiscount" name="discount" placeholder="Have a code?" />
+          <input id="tdiscount" name="discount" placeholder="Have a code?" ${this.val('discount')} />
           <p class="discount-note" style="font-size:12px;margin:6px 0 0;"></p>
         </div>
         <button class="primary" type="submit" ${this.busy || !canBook ? 'disabled' : ''}>${this.busy ? 'Starting payment…' : 'Continue to payment'}</button>
@@ -614,7 +661,7 @@ export class DaisyBooking extends HTMLElement {
    * rather than being hidden: seeing "Couples — not enough places left" tells
    * the customer something useful, silently dropping the option does not.
    */
-  private ticketOption(t: TicketType, remaining: number, firstAffordableId?: string): string {
+  private ticketOption(t: TicketType, remaining: number, preselectId?: string): string {
     // Both fields are optional until the API ships them — render nothing when absent.
     const vat = this.vatNote(t.vat_rate);
     const session = t.session_label
@@ -623,7 +670,7 @@ export class DaisyBooking extends HTMLElement {
     const seats = seatsFor(t);
     const available = seats <= remaining;
     // Only ever pre-select something the customer can actually buy.
-    const checked = available && t.id === firstAffordableId ? 'checked' : '';
+    const checked = available && t.id === preselectId ? 'checked' : '';
     // "Uses 2 places" is worth spelling out for a Couples/family ticket, and
     // meaningless for a single, so only say it when it is more than one.
     const seatNote = seats > 1 ? `Uses ${seats} places` : '';
@@ -649,13 +696,13 @@ export class DaisyBooking extends HTMLElement {
   private customerFields(): string {
     return `
         <div class="row">
-          <div class="field"><label for="tname">First name</label><input id="tname" name="name" required /></div>
-          <div class="field"><label for="tlast">Last name</label><input id="tlast" name="last" required /></div>
+          <div class="field"><label for="tname">First name</label><input id="tname" name="name" ${this.val('name')} required /></div>
+          <div class="field"><label for="tlast">Last name</label><input id="tlast" name="last" ${this.val('last')} required /></div>
         </div>
-        <div class="field"><label for="temail">Email</label><input id="temail" name="email" type="email" required /></div>
+        <div class="field"><label for="temail">Email</label><input id="temail" name="email" type="email" ${this.val('email')} required /></div>
         <div class="row">
-          <div class="field"><label for="tphone">Phone</label><input id="tphone" name="phone" type="tel" autocomplete="tel" required /></div>
-          <div class="field"><label for="tpc">Postcode</label><input id="tpc" name="postcode" autocomplete="postal-code" required /></div>
+          <div class="field"><label for="tphone">Phone</label><input id="tphone" name="phone" type="tel" autocomplete="tel" ${this.val('phone')} required /></div>
+          <div class="field"><label for="tpc">Postcode</label><input id="tpc" name="postcode" autocomplete="postal-code" ${this.val('postcode')} required /></div>
         </div>`;
   }
 
@@ -709,7 +756,9 @@ export class DaisyBooking extends HTMLElement {
           <select id="iqty" name="quantity">
             ${Array.from(
               { length: MAX_ITEM_QUANTITY },
-              (_, n) => `<option value="${n + 1}">${n + 1}</option>`,
+              // Re-select the quantity chosen before an error re-render.
+              (_, n) =>
+                `<option value="${n + 1}"${String(n + 1) === this.formValues.quantity ? ' selected' : ''}>${n + 1}</option>`,
             ).join('')}
           </select>
         </div>`;
