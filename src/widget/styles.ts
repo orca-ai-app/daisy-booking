@@ -100,7 +100,8 @@ export const STYLES = /* css */ `
   .trainer h3 { margin: 0 0 10px; font-size: 15px; color: var(--daisy-primary); }
   .trainer-row { display: flex; gap: 14px; align-items: flex-start; }
   .trainer-photo { width: 84px; height: 84px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: #fff; }
-  .trainer-photo.logo { object-fit: contain; padding: 8px; border-radius: 12px; }
+  /* The DFA logo is white-on-transparent, so the fallback box must be blue. */
+  .trainer-photo.logo { object-fit: contain; padding: 10px; border-radius: 12px; background: var(--daisy-primary); }
   .trainer-body { min-width: 0; }
   .trainer-name { margin: 0 0 6px; font-weight: 700; color: var(--daisy-ink); }
   .trainer-body p { margin: 0 0 8px; font-size: 13px; line-height: 1.55; color: var(--daisy-ink-soft); }

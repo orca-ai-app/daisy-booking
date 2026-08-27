@@ -721,14 +721,15 @@ export class DaisyBooking extends HTMLElement {
     const name = c.franchisee_business || c.franchisee_name;
     if (!name) return '';
     const photo = c.franchisee_photo || DAISY_LOGO_URL;
-    const about = (c.franchisee_about ?? '').trim();
+    // No bio yet → a generic line, so the block never sits empty under a name.
+    const about =
+      (c.franchisee_about ?? '').trim() ||
+      `${name} is your local Daisy First Aid trainer, teaching baby and child first aid classes for parents, grandparents and carers. Bespoke classes for your home or workplace are also available.`;
     const paragraphs = about
-      ? about
-          .split(/\n+/)
-          .filter((p) => p.trim())
-          .map((p) => `<p>${escapeHtml(p.trim())}</p>`)
-          .join('')
-      : '';
+      .split(/\n+/)
+      .filter((p) => p.trim())
+      .map((p) => `<p>${escapeHtml(p.trim())}</p>`)
+      .join('');
     return `
       <div class="trainer">
         <h3>About your trainer</h3>
