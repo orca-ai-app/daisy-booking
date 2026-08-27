@@ -80,6 +80,10 @@ export interface CourseCard {
   venue_postcode: string | null;
   distance_miles: number | null;
   franchisee_name: string;
+  /** Trading name ("Daisy First Aid Redhill") — who the customer books with. */
+  franchisee_business?: string | null;
+  /** The trainer's page on daisyfirstaid.com, when HQ has recorded it. */
+  franchisee_website?: string | null;
   capacity: number;
   /**
    * Places left in the class's ONE shared pool. Every ticket type draws from it,
@@ -133,6 +137,7 @@ export interface PublicCoursesResult {
     business_name: string | null;
     email: string | null;
     phone: string | null;
+    website_url?: string | null;
   };
 }
 

@@ -573,6 +573,7 @@ export class DaisyBooking extends HTMLElement {
              <p>Bespoke classes are available for your home or workplace, so if you don't see the course you need, please get in touch and we'll do our best to help.</p>
              ${lf.email ? `<p><a href="mailto:${escapeHtml(lf.email)}">${escapeHtml(lf.email)}</a></p>` : ''}
              ${lf.phone ? `<p><a href="tel:${escapeHtml(lf.phone)}">${escapeHtml(lf.phone)}</a></p>` : ''}
+             ${lf.website_url ? `<p><a href="${escapeHtml(lf.website_url)}" target="_blank" rel="noopener">Visit their page for course and trainer details</a></p>` : ''}
            </div>`
         : `<p class="sub">There are no classes scheduled here just yet. Please check back soon.</p>`;
       return `
@@ -601,6 +602,7 @@ export class DaisyBooking extends HTMLElement {
               <span>${formatDate(c.event_date)}</span>
               <span>${formatTime(c.start_time)}–${formatTime(c.end_time)}</span>
               <span>${escapeHtml(c.venue_name ?? c.venue_postcode ?? '')}${dist}</span>
+              <span>with ${escapeHtml(c.franchisee_business || c.franchisee_name || 'Daisy First Aid')}</span>
               <span class="price">from ${formatPence(priceFrom)}</span>
             </div>
             ${this.spotsLine(c)}
@@ -670,6 +672,7 @@ export class DaisyBooking extends HTMLElement {
       ${this.backBtn('results')}
       <h2>${escapeHtml(c.display_name || c.template_name)}</h2>
       <p class="sub">${formatDate(c.event_date)} · ${formatTime(c.start_time)}–${formatTime(c.end_time)} · ${escapeHtml(c.venue_name ?? c.venue_postcode ?? '')}</p>
+      <p class="sub">Run by ${escapeHtml(c.franchisee_business || c.franchisee_name || 'Daisy First Aid')}${c.franchisee_website ? ` · <a href="${escapeHtml(c.franchisee_website)}" target="_blank" rel="noopener">visit their page</a>` : ''}</p>
       ${c.age_range ? `<div class="agerange">Suitable for ${escapeHtml(c.age_range)}</div>` : ''}
       ${desc ? `<p class="desc full">${escapeHtml(desc)}</p>` : ''}
       ${this.spotsLine(c)}
