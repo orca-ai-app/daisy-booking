@@ -84,6 +84,10 @@ export interface CourseCard {
   franchisee_business?: string | null;
   /** The trainer's page on daisyfirstaid.com, when HQ has recorded it. */
   franchisee_website?: string | null;
+  /** Trainer photo (portal Profile upload); widget falls back to the Daisy logo. */
+  franchisee_photo?: string | null;
+  /** The trainer's own bio, shown in the class view's trainer block. */
+  franchisee_about?: string | null;
   capacity: number;
   /**
    * Places left in the class's ONE shared pool. Every ticket type draws from it,

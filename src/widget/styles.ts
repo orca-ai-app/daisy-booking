@@ -95,6 +95,18 @@ export const STYLES = /* css */ `
   .notice { background: var(--daisy-primary-tint); border-radius: var(--radius-sm); padding: 12px 14px; font-size: 13px; color: var(--daisy-ink-soft); margin-bottom: 14px; }
   .notice.warn { background: #FCEFE9; border: 1px solid var(--daisy-orange); color: var(--daisy-orange); font-weight: 600; }
 
+  /* Trainer block ("About your trainer", under the booking form) */
+  .trainer { margin-top: 22px; padding: 16px 18px; background: var(--daisy-primary-tint); border-radius: var(--radius-sm); }
+  .trainer h3 { margin: 0 0 10px; font-size: 15px; color: var(--daisy-primary); }
+  .trainer-row { display: flex; gap: 14px; align-items: flex-start; }
+  .trainer-photo { width: 84px; height: 84px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: #fff; }
+  .trainer-photo.logo { object-fit: contain; padding: 8px; border-radius: 12px; }
+  .trainer-body { min-width: 0; }
+  .trainer-name { margin: 0 0 6px; font-weight: 700; color: var(--daisy-ink); }
+  .trainer-body p { margin: 0 0 8px; font-size: 13px; line-height: 1.55; color: var(--daisy-ink-soft); }
+  .trainer-body a { color: var(--daisy-primary); font-weight: 600; }
+  @media (max-width: 480px) { .trainer-row { flex-direction: column; } }
+
   /* Modal (<dialog>) */
   dialog.daisy-modal { border: none; border-radius: var(--radius); padding: 0; max-width: 560px; width: 92vw; box-shadow: 0 20px 60px rgba(0,40,70,.35); }
   dialog.daisy-modal::backdrop { background: rgba(10,40,60,.55); }

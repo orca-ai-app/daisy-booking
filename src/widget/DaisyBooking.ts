@@ -24,6 +24,10 @@ type View = 'postcode' | 'searching' | 'results' | 'interest' | 'tickets' | 'ite
 
 const MAX_ITEM_QUANTITY = 20;
 
+// Fallback for the trainer block when a franchisee has no photo uploaded —
+// the official Daisy logo served from the main site.
+const DAISY_LOGO_URL = 'https://www.daisyfirstaid.com/wp-content/uploads/2018/08/DFA-logo.png';
+
 function truncate(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
 }
@@ -703,7 +707,40 @@ export class DaisyBooking extends HTMLElement {
         </div>
         <button class="primary" type="submit" ${this.busy || !canBook ? 'disabled' : ''}>${this.busy ? 'Starting payment…' : 'Continue to payment'}</button>
         ${this.error ? `<p class="error" role="alert">${escapeHtml(this.error)}</p>` : ''}
-      </form>`;
+      </form>
+      ${this.trainerBlock(c)}`;
+  }
+
+  /**
+   * "About your trainer" under the booking form — the trainer IS the product
+   * for a parent choosing who teaches them. Photo falls back to the Daisy
+   * logo; the bio is the franchisee's own (seeded from their page, editable
+   * on their portal Profile).
+   */
+  private trainerBlock(c: CourseCard): string {
+    const name = c.franchisee_business || c.franchisee_name;
+    if (!name) return '';
+    const photo = c.franchisee_photo || DAISY_LOGO_URL;
+    const about = (c.franchisee_about ?? '').trim();
+    const paragraphs = about
+      ? about
+          .split(/\n+/)
+          .filter((p) => p.trim())
+          .map((p) => `<p>${escapeHtml(p.trim())}</p>`)
+          .join('')
+      : '';
+    return `
+      <div class="trainer">
+        <h3>About your trainer</h3>
+        <div class="trainer-row">
+          <img class="trainer-photo${c.franchisee_photo ? '' : ' logo'}" src="${escapeHtml(photo)}" alt="${escapeHtml(name)}" loading="lazy" />
+          <div class="trainer-body">
+            <p class="trainer-name">${escapeHtml(name)}</p>
+            ${paragraphs}
+            ${c.franchisee_website ? `<p><a href="${escapeHtml(c.franchisee_website)}" target="_blank" rel="noopener">Visit ${escapeHtml(name)}'s page</a></p>` : ''}
+          </div>
+        </div>
+      </div>`;
   }
 
   /**
