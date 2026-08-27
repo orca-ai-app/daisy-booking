@@ -738,7 +738,7 @@ export class DaisyBooking extends HTMLElement {
           <div class="trainer-body">
             <p class="trainer-name">${escapeHtml(name)}</p>
             ${paragraphs}
-            ${c.franchisee_website ? `<p><a href="${escapeHtml(c.franchisee_website)}" target="_blank" rel="noopener">Visit ${escapeHtml(name)}'s page</a></p>` : ''}
+            ${c.franchisee_website ? `<p><a class="pagebtn" href="${escapeHtml(c.franchisee_website)}" target="_blank" rel="noopener">Take me to the trainer</a></p>` : ''}
           </div>
         </div>
       </div>`;

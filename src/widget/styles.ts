@@ -106,6 +106,8 @@ export const STYLES = /* css */ `
   .trainer-name { margin: 0 0 6px; font-weight: 700; color: var(--daisy-ink); }
   .trainer-body p { margin: 0 0 8px; font-size: 13px; line-height: 1.55; color: var(--daisy-ink-soft); }
   .trainer-body a { color: var(--daisy-primary); font-weight: 600; }
+  .trainer-body a.pagebtn { display: inline-block; margin-top: 4px; padding: 10px 18px; border: 2px solid var(--daisy-primary); border-radius: 999px; background: #fff; color: var(--daisy-primary); font-weight: 700; font-size: 13px; text-decoration: none; }
+  .trainer-body a.pagebtn:hover { background: var(--daisy-primary); color: #fff; }
   @media (max-width: 480px) { .trainer-row { flex-direction: column; } }
 
   /* Modal (<dialog>) */
