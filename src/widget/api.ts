@@ -123,6 +123,17 @@ export interface PublicCoursesResult {
   suggest_interest_form: boolean;
   /** Place name the server matched a town/area search to (G8). */
   resolved_location?: string;
+  /**
+   * The searched area's own franchisee (active territories only) — their
+   * public business contact details, shown when a search finds no classes so
+   * the customer reaches the local trainer instead of a dead end.
+   */
+  local_franchisee?: {
+    name: string | null;
+    business_name: string | null;
+    email: string | null;
+    phone: string | null;
+  };
 }
 
 /**

@@ -14,6 +14,7 @@ import {
   SCRIPT_ORIGIN,
   type CourseCard,
   type ItemCard,
+  type PublicCoursesResult,
   type TicketType,
   type CheckoutInput,
 } from './api';
@@ -53,6 +54,7 @@ export class DaisyBooking extends HTMLElement {
   private postcode = '';
   /** The place name the server matched a town search to, when it was a town. */
   private resolvedLocation: string | null = null;
+  private localFranchisee: PublicCoursesResult['local_franchisee'] | null = null;
   private courses: CourseCard[] = [];
   private selected: CourseCard | null = null;
   private items: ItemCard[] = [];
@@ -173,6 +175,7 @@ export class DaisyBooking extends HTMLElement {
       // When we searched a town, show the place the server actually matched
       // ("Chipping Norton") rather than echoing back what was typed.
       this.resolvedLocation = result.resolved_location ?? null;
+      this.localFranchisee = result.local_franchisee ?? null;
       this.view = result.courses.length > 0 ? 'results' : result.suggest_interest_form ? 'interest' : 'results';
     } catch (err) {
       this.error = errorMessage(err, 'Could not search right now.');
@@ -560,11 +563,23 @@ export class DaisyBooking extends HTMLElement {
     // back to.
     const fromSearch = this.postcode.trim().length > 0;
     if (this.courses.length === 0) {
+      // An active territory with nothing scheduled hands the customer to the
+      // area's own trainer rather than a dead end. Vacant/unclaimed areas
+      // never reach here — they get the HQ interest form instead.
+      const lf = fromSearch ? this.localFranchisee : null;
+      const contactCard = lf
+        ? `<div class="notice">
+             <p><strong>${escapeHtml(lf.business_name ?? lf.name ?? 'Your local trainer')}</strong> covers ${escapeHtml(this.locationLabel)}.</p>
+             <p>Bespoke classes are available for your home or workplace, so if you don't see the course you need, please get in touch and we'll do our best to help.</p>
+             ${lf.email ? `<p><a href="mailto:${escapeHtml(lf.email)}">${escapeHtml(lf.email)}</a></p>` : ''}
+             ${lf.phone ? `<p><a href="tel:${escapeHtml(lf.phone)}">${escapeHtml(lf.phone)}</a></p>` : ''}
+           </div>`
+        : `<p class="sub">There are no classes scheduled here just yet. Please check back soon.</p>`;
       return `
         ${fromSearch ? this.backBtn() : ''}
         <div class="empty">
           <h2>${fromSearch ? `No upcoming classes near ${escapeHtml(this.locationLabel)}` : 'No upcoming classes just yet'}</h2>
-          <p class="sub">There are no classes scheduled here just yet. Please check back soon.</p>
+          ${contactCard}
         </div>
         ${this.itemsSection()}`;
     }
