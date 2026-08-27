@@ -193,9 +193,11 @@ async function call<T>(path: string, body: unknown): Promise<T> {
 /**
  * `postcode` accepts a UK postcode OR a town/area name (G8) — the server
  * geocodes whichever it is, so the widget never has to tell them apart.
+ * With a `franchisee_id` and no postcode, the server returns that
+ * franchisee's full upcoming schedule instead of a radius search.
  */
 export function getPublicCourses(input: {
-  postcode: string;
+  postcode?: string;
   franchisee_id?: string;
   radius_miles?: number;
 }): Promise<PublicCoursesResult> {

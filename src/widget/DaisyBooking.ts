@@ -87,10 +87,36 @@ export class DaisyBooking extends HTMLElement {
       void this.loadByToken(token);
       return;
     }
-    this.render();
+    if (this.franchiseeId && !this.postcode) {
+      // Franchisee mode (the Book Online button on a trainer's page): the
+      // visitor is already on that trainer's page, so don't ask for a
+      // postcode — open straight onto the trainer's upcoming classes.
+      this.view = 'searching';
+      this.render();
+      void this.loadFranchiseeSchedule();
+    } else {
+      this.render();
+    }
     // Franchisee-filtered embed: their undated items are on sale regardless of
     // postcode, so surface them on the landing view too.
     if (this.franchiseeId) void this.loadItems();
+  }
+
+  /**
+   * Franchisee mode's landing list — every upcoming public class, no postcode.
+   * Falls back to the postcode view (still scoped to the franchisee) only when
+   * the listing cannot load.
+   */
+  private async loadFranchiseeSchedule() {
+    try {
+      const result = await getPublicCourses({ franchisee_id: this.franchiseeId });
+      this.courses = result.courses;
+      this.view = 'results';
+    } catch (err) {
+      this.error = errorMessage(err, 'Could not load classes right now.');
+      this.view = 'postcode';
+    }
+    this.render();
   }
 
   private async loadByToken(token: string) {
@@ -217,10 +243,12 @@ export class DaisyBooking extends HTMLElement {
   private async refreshSpots() {
     const course = this.selected;
     const pc = this.postcode.trim();
-    if (!course || !pc) return;
+    // Franchisee mode may have no postcode — the schedule listing still
+    // carries this course, so the refresh works either way.
+    if (!course || (!pc && !this.franchiseeId)) return;
     try {
       const result = await getPublicCourses({
-        postcode: pc,
+        ...(pc ? { postcode: pc } : {}),
         franchisee_id: this.franchiseeId,
         radius_miles: this.radius,
       });
@@ -527,11 +555,15 @@ export class DaisyBooking extends HTMLElement {
   }
 
   private resultsView(): string {
+    // Franchisee mode lands here with no postcode typed: the list is the
+    // trainer's whole schedule, so there is no "near X" and no search to go
+    // back to.
+    const fromSearch = this.postcode.trim().length > 0;
     if (this.courses.length === 0) {
       return `
-        ${this.backBtn()}
+        ${fromSearch ? this.backBtn() : ''}
         <div class="empty">
-          <h2>No upcoming classes near ${escapeHtml(this.locationLabel)}</h2>
+          <h2>${fromSearch ? `No upcoming classes near ${escapeHtml(this.locationLabel)}` : 'No upcoming classes just yet'}</h2>
           <p class="sub">There are no classes scheduled here just yet. Please check back soon.</p>
         </div>
         ${this.itemsSection()}`;
@@ -570,7 +602,8 @@ export class DaisyBooking extends HTMLElement {
         : open === 0
           ? `${soldOut} upcoming, all currently full`
           : `${open} available · ${soldOut} currently full`;
-    return `${this.backBtn()}<h2>Classes near ${escapeHtml(this.locationLabel)}</h2><p class="sub">${summary}</p>${cards}${this.itemsSection()}`;
+    const heading = fromSearch ? `Classes near ${escapeHtml(this.locationLabel)}` : 'Upcoming classes';
+    return `${fromSearch ? this.backBtn() : ''}<h2>${heading}</h2><p class="sub">${summary}</p>${cards}${this.itemsSection()}`;
   }
 
   /**
