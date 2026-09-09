@@ -752,7 +752,6 @@ export class DaisyBooking extends HTMLElement {
    */
   private ticketOption(t: TicketType, remaining: number, preselectId?: string): string {
     // Both fields are optional until the API ships them — render nothing when absent.
-    const vat = this.vatNote(t.vat_rate);
     const session = t.session_label
       ? `<span style="font-size:12px;color:var(--daisy-muted);">${escapeHtml(t.session_label)}</span>`
       : '';
@@ -770,7 +769,7 @@ export class DaisyBooking extends HTMLElement {
         <label class="ticket${available ? '' : ' unavailable'}">
           <input type="radio" name="ticket" value="${t.id}" ${checked} ${available ? '' : 'disabled'} style="width:auto;" />
           <span style="display:flex;flex-direction:column;">
-            <span>${escapeHtml(t.name)} — ${formatPence(t.price_pence)}${vat}</span>
+            <span>${escapeHtml(t.name)} — ${this.priceLine(t)}</span>
             ${session}
             ${note ? `<span class="ticket-note${available ? '' : ' warn'}">${escapeHtml(note)}</span>` : ''}
           </span>
@@ -796,10 +795,23 @@ export class DaisyBooking extends HTMLElement {
   }
 
   /** "incl. VAT @ N%" note, rendered only when the API supplies a rate. */
-  private vatNote(rate: number | null | undefined): string {
-    return typeof rate === 'number' && rate > 0
-      ? ` <span style="font-size:12px;color:var(--daisy-muted);">incl. VAT @ ${rate}%</span>`
-      : '';
+  private vatNote(rate: number | null | undefined, exclusive?: boolean): string {
+    if (typeof rate !== 'number' || rate <= 0 || exclusive) return '';
+    return ` <span style="font-size:12px;color:var(--daisy-muted);">incl. VAT @ ${rate}%</span>`;
+  }
+
+  /**
+   * The ticket price as shown. B2B tickets (migration 055) break the gross
+   * down as "£99.00 + VAT £19.80 = £118.80"; everything else is one
+   * VAT-inclusive price. The charged amount is identical either way.
+   */
+  private priceLine(t: TicketType): string {
+    if (t.vat_exclusive && typeof t.vat_rate === 'number' && t.vat_rate > 0) {
+      const ex = Math.round(t.price_pence / (1 + t.vat_rate / 100));
+      const vatAmount = t.price_pence - ex;
+      return `${formatPence(ex)} <span style="font-size:12px;color:var(--daisy-muted);">+ VAT ${formatPence(vatAmount)} = ${formatPence(t.price_pence)}</span>`;
+    }
+    return `${formatPence(t.price_pence)}${this.vatNote(t.vat_rate)}`;
   }
 
   /**

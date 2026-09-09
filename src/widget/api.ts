@@ -57,6 +57,11 @@ export interface TicketType {
   session_label?: string | null;
   /** VAT rate percentage — when set, prices show "incl. VAT @ {rate}%". */
   vat_rate?: number | null;
+  /**
+   * Migration 055 (B2B): the price is presented as "ex-VAT + VAT = total".
+   * price_pence is ALWAYS the gross amount charged; this only changes display.
+   */
+  vat_exclusive?: boolean;
 }
 
 export interface CourseCard {
