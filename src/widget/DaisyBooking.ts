@@ -638,10 +638,11 @@ export class DaisyBooking extends HTMLElement {
           ? `${soldOut} upcoming, all currently full`
           : `${open} available · ${soldOut} currently full`;
     const heading = fromSearch ? `Classes near ${escapeHtml(this.locationLabel)}` : 'Upcoming classes';
-    // Offer the searched area's own trainer alongside any nearby classes, so a
-    // "wait to be contacted" trainer is never bypassed and bespoke enquiries
-    // always have a route (Jenni, 11 Sep).
-    return `${fromSearch ? this.backBtn() : ''}<h2>${heading}</h2><p class="sub">${summary}</p>${cards}${this.localTrainerCard()}${this.itemsSection()}`;
+    // Lead with the searched area's own trainer so they get priority the moment a
+    // postcode is entered, above the class list rather than below it. In busy
+    // areas (e.g. London) there are many nearby classes, and burying the local
+    // trainer at the bottom means too much scrolling to reach them (Jenni, 11 Sep).
+    return `${fromSearch ? this.backBtn() : ''}${this.localTrainerCard()}<h2>${heading}</h2><p class="sub">${summary}</p>${cards}${this.itemsSection()}`;
   }
 
   /**
