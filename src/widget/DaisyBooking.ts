@@ -561,6 +561,27 @@ export class DaisyBooking extends HTMLElement {
     return this.resolvedLocation ?? this.postcode.toUpperCase();
   }
 
+  /**
+   * The searched area's own trainer, offered as a bespoke/contact route. Shown
+   * on every search of an active territory — both when nothing is scheduled and
+   * alongside nearby classes — so a "don't list, wait to be contacted" trainer
+   * is never skipped in favour of a neighbour, and a customer who wants other
+   * dates or a tailored class can always reach the trainer whose area they
+   * searched. Returns '' outside a search (franchisee mode) or when the server
+   * sent no local trainer (vacant/unclaimed areas).
+   */
+  private localTrainerCard(): string {
+    const lf = this.postcode.trim().length > 0 ? this.localFranchisee : null;
+    if (!lf) return '';
+    return `<div class="notice">
+             <p><strong>${escapeHtml(lf.business_name ?? lf.name ?? 'Your local trainer')}</strong> covers ${escapeHtml(this.locationLabel)}.</p>
+             <p>Bespoke classes are available for your home or workplace, so if you don't see the course you need, please get in touch and we'll do our best to help.</p>
+             ${lf.email ? `<p><a href="mailto:${escapeHtml(lf.email)}">${escapeHtml(lf.email)}</a></p>` : ''}
+             ${lf.phone ? `<p><a href="tel:${escapeHtml(lf.phone)}">${escapeHtml(lf.phone)}</a></p>` : ''}
+             ${lf.website_url ? `<p><a href="${escapeHtml(lf.website_url)}" target="_blank" rel="noopener">Visit their page for course and trainer details</a></p>` : ''}
+           </div>`;
+  }
+
   private resultsView(): string {
     // Franchisee mode lands here with no postcode typed: the list is the
     // trainer's whole schedule, so there is no "near X" and no search to go
@@ -570,16 +591,9 @@ export class DaisyBooking extends HTMLElement {
       // An active territory with nothing scheduled hands the customer to the
       // area's own trainer rather than a dead end. Vacant/unclaimed areas
       // never reach here — they get the HQ interest form instead.
-      const lf = fromSearch ? this.localFranchisee : null;
-      const contactCard = lf
-        ? `<div class="notice">
-             <p><strong>${escapeHtml(lf.business_name ?? lf.name ?? 'Your local trainer')}</strong> covers ${escapeHtml(this.locationLabel)}.</p>
-             <p>Bespoke classes are available for your home or workplace, so if you don't see the course you need, please get in touch and we'll do our best to help.</p>
-             ${lf.email ? `<p><a href="mailto:${escapeHtml(lf.email)}">${escapeHtml(lf.email)}</a></p>` : ''}
-             ${lf.phone ? `<p><a href="tel:${escapeHtml(lf.phone)}">${escapeHtml(lf.phone)}</a></p>` : ''}
-             ${lf.website_url ? `<p><a href="${escapeHtml(lf.website_url)}" target="_blank" rel="noopener">Visit their page for course and trainer details</a></p>` : ''}
-           </div>`
-        : `<p class="sub">There are no classes scheduled here just yet. Please check back soon.</p>`;
+      const contactCard =
+        this.localTrainerCard() ||
+        `<p class="sub">There are no classes scheduled here just yet. Please check back soon.</p>`;
       return `
         ${fromSearch ? this.backBtn() : ''}
         <div class="empty">
@@ -624,7 +638,10 @@ export class DaisyBooking extends HTMLElement {
           ? `${soldOut} upcoming, all currently full`
           : `${open} available · ${soldOut} currently full`;
     const heading = fromSearch ? `Classes near ${escapeHtml(this.locationLabel)}` : 'Upcoming classes';
-    return `${fromSearch ? this.backBtn() : ''}<h2>${heading}</h2><p class="sub">${summary}</p>${cards}${this.itemsSection()}`;
+    // Offer the searched area's own trainer alongside any nearby classes, so a
+    // "wait to be contacted" trainer is never bypassed and bespoke enquiries
+    // always have a route (Jenni, 11 Sep).
+    return `${fromSearch ? this.backBtn() : ''}<h2>${heading}</h2><p class="sub">${summary}</p>${cards}${this.localTrainerCard()}${this.itemsSection()}`;
   }
 
   /**
