@@ -592,18 +592,28 @@ export class DaisyBooking extends HTMLElement {
       // area's own trainer rather than a dead end. Vacant/unclaimed areas
       // never reach here — they get the HQ interest form instead.
       // Franchisee mode (a trainer's own Book Online button, no postcode) with
-      // nothing scheduled: point the customer to the trainer for upcoming or
-      // bespoke dates rather than a dead end. The postcode-search fallback keeps
-      // its neutral wording.
+      // nothing scheduled: a branded call to action to contact the trainer for
+      // upcoming or bespoke dates, rather than a dead-end "no classes" line.
+      if (!fromSearch) {
+        return `
+          <div class="cta">
+            <div class="cta-badge">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            </div>
+            <h3>New dates on the way</h3>
+            <p>There are no classes to book online right now. Get in touch with the trainer for upcoming dates, or to arrange a bespoke class for your group.</p>
+          </div>
+          ${this.itemsSection()}`;
+      }
+      // Postcode search that lands on an active territory with nothing nearby:
+      // hand over to the area's own trainer; otherwise a neutral line.
       const contactCard =
         this.localTrainerCard() ||
-        (fromSearch
-          ? `<p class="sub">There are no classes scheduled here just yet. Please check back soon.</p>`
-          : `<p class="sub">No classes are available to book online right now. Please contact the trainer for upcoming dates or a bespoke class.</p>`);
+        `<p class="sub">There are no classes scheduled here just yet. Please check back soon.</p>`;
       return `
-        ${fromSearch ? this.backBtn() : ''}
+        ${this.backBtn()}
         <div class="empty">
-          <h2>${fromSearch ? `No upcoming classes near ${escapeHtml(this.locationLabel)}` : 'No upcoming classes just yet'}</h2>
+          <h2>No upcoming classes near ${escapeHtml(this.locationLabel)}</h2>
           ${contactCard}
         </div>
         ${this.itemsSection()}`;

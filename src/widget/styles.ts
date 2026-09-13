@@ -94,6 +94,11 @@ export const STYLES = /* css */ `
   .total { font-size: 16px; font-weight: 700; margin: 4px 0 12px; }
   .notice { background: var(--daisy-primary-tint); border-radius: var(--radius-sm); padding: 12px 14px; font-size: 13px; color: var(--daisy-ink-soft); margin-bottom: 14px; }
   .notice.warn { background: #FCEFE9; border: 1px solid var(--daisy-orange); color: var(--daisy-orange); font-weight: 600; }
+  .cta { text-align: center; background: linear-gradient(180deg, var(--daisy-primary-tint), var(--daisy-paper)); border: 1px solid var(--daisy-line); border-radius: var(--radius); padding: 30px 22px; margin: 2px 0 6px; }
+  .cta-badge { width: 54px; height: 54px; margin: 0 auto 14px; border-radius: 50%; background: var(--daisy-primary); color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 22px rgba(0,111,172,.30); }
+  .cta-badge svg { width: 26px; height: 26px; }
+  .cta h3 { font-family: 'Quicksand', sans-serif; font-size: 19px; font-weight: 700; color: var(--daisy-ink); margin: 0 0 6px; }
+  .cta p { font-size: 14px; line-height: 1.55; color: var(--daisy-ink-soft); margin: 0 auto; max-width: 340px; }
 
   /* Trainer block ("About your trainer", under the booking form) */
   .trainer { margin-top: 22px; padding: 16px 18px; background: var(--daisy-primary-tint); border-radius: var(--radius-sm); }

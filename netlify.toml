@@ -5,11 +5,13 @@
 [build.environment]
   NODE_VERSION = "20"
 
-# The widget bundle is served from a versioned, immutable path.
+# The widget bundle is fetched fresh: revalidate every load (cheap 304s via
+# ETag) so a deploy propagates in seconds, not up to a day. The old 24h max-age
+# on this fixed path left stale copies live on edges/browsers after each deploy.
 [[headers]]
   for = "/widget/v1/*"
   [headers.values]
-    Cache-Control = "public, max-age=86400"
+    Cache-Control = "public, max-age=0, must-revalidate"
     Access-Control-Allow-Origin = "*"
 
 # /book/:token → the standalone single-course booking page (token read from path).
