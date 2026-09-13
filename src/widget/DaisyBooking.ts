@@ -302,13 +302,16 @@ export class DaisyBooking extends HTMLElement {
     }
     this.busy = true;
     this.render();
+    const franchiseeRequest = !!this.franchiseeId && !this.postcode.trim();
     const pc = this.postcode.trim();
     try {
       await submitInterestForm({
-        // A town search sends the place the server matched ("chippy" →
-        // "Chipping Norton"), not the raw typed text; a postcode goes through
-        // as typed. The raw input is the fallback when nothing resolved.
-        postcode: UK_POSTCODE_RE.test(pc) ? pc : (this.resolvedLocation ?? pc),
+        // A franchisee-page request routes to that trainer (no postcode). Otherwise
+        // a town search sends the place the server matched ("chippy" → "Chipping
+        // Norton"); a postcode goes through as typed; raw input is the fallback.
+        ...(franchiseeRequest
+          ? { franchisee_id: this.franchiseeId }
+          : { postcode: UK_POSTCODE_RE.test(pc) ? pc : (this.resolvedLocation ?? pc) }),
         num_attendees: attendees,
         contact_name: name,
         contact_email: email,
@@ -317,9 +320,12 @@ export class DaisyBooking extends HTMLElement {
       });
       this.root.querySelector('.root')!.innerHTML = `
         <div class="empty">
-          <h2>Thank you</h2>
-          <p class="sub">We've registered your interest in ${escapeHtml(this.locationLabel)}.
-          A local trainer will be in touch.</p>
+          <h2>${franchiseeRequest ? 'Request sent' : 'Thank you'}</h2>
+          <p class="sub">${
+            franchiseeRequest
+              ? "Your request has been sent to the trainer. They'll be in touch soon."
+              : `We've registered your interest in ${escapeHtml(this.locationLabel)}. A local trainer will be in touch.`
+          }</p>
         </div>`;
     } catch (err) {
       this.error = errorMessage(err, 'Could not submit right now.');
@@ -601,7 +607,8 @@ export class DaisyBooking extends HTMLElement {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
             </div>
             <h3>New dates on the way</h3>
-            <p>There are no classes to book online right now. Get in touch with the trainer for upcoming dates, or to arrange a bespoke class for your group.</p>
+            <p>There are no classes to book online right now. Send the trainer a request and they'll be in touch about upcoming dates, or a class for your group.</p>
+            <button class="primary cta-btn" type="button" data-request-class>Request a class</button>
           </div>
           ${this.itemsSection()}`;
       }
@@ -675,11 +682,16 @@ export class DaisyBooking extends HTMLElement {
   }
 
   private interestView(): string {
+    // Franchisee-page "Request a class" (a trainer id, no postcode) versus the
+    // vacant-area enquiry (a postcode, no trainer). Copy and routing differ.
+    const franchiseeRequest = !!this.franchiseeId && !this.postcode.trim();
+    const notice = franchiseeRequest
+      ? `Leave your details and the trainer will be in touch about upcoming dates, or arranging a class for your group.`
+      : `We don't have a course listed in ${escapeHtml(this.locationLabel)} right now. Please leave your details and we'll direct you to one nearby or help arrange a private course for your group.`;
     return `
-      ${this.backBtn()}
-      <h2>No classes near you yet</h2>
-      <div class="notice">We don't have a course listed in ${escapeHtml(this.locationLabel)} right now.
-      Please leave your details and we'll direct you to one nearby or help arrange a private course for your group.</div>
+      ${franchiseeRequest ? this.backBtn('results') : this.backBtn()}
+      <h2>${franchiseeRequest ? 'Request a class' : 'No classes near you yet'}</h2>
+      <div class="notice">${notice}</div>
       <form class="interest">
         <div class="field"><label for="iname">Your name</label><input id="iname" name="name" ${this.val('name')} /></div>
         <div class="field"><label for="iemail">Email</label><input id="iemail" name="email" type="email" ${this.val('email')} /></div>
@@ -687,8 +699,8 @@ export class DaisyBooking extends HTMLElement {
           <div class="field"><label for="iphone">Phone (optional)</label><input id="iphone" name="phone" ${this.val('phone')} /></div>
           <div class="field"><label for="iatt">How many people?</label><input id="iatt" name="attendees" type="number" min="1" ${this.val('attendees', '1')} /></div>
         </div>
-        <div class="field"><label for="inotes">Please describe the course you require and anything else</label><textarea id="inotes" name="notes" rows="3">${escapeHtml(this.formValues.notes ?? '')}</textarea></div>
-        <button class="primary" type="submit" ${this.busy ? 'disabled' : ''}>${this.busy ? 'Sending…' : 'Register interest'}</button>
+        <div class="field"><label for="inotes">${franchiseeRequest ? 'What are you looking for? (preferred dates, ages, anything else)' : 'Please describe the course you require and anything else'}</label><textarea id="inotes" name="notes" rows="3">${escapeHtml(this.formValues.notes ?? '')}</textarea></div>
+        <button class="primary" type="submit" ${this.busy ? 'disabled' : ''}>${this.busy ? 'Sending…' : franchiseeRequest ? 'Send request' : 'Register interest'}</button>
         ${this.error ? `<p class="error" role="alert">${escapeHtml(this.error)}</p>` : ''}
       </form>
       ${this.itemsSection()}`;
@@ -1009,6 +1021,14 @@ export class DaisyBooking extends HTMLElement {
           this.render();
         }),
       ),
+    );
+
+    this.root.querySelector('[data-request-class]')?.addEventListener('click', () =>
+      this.guard('request-class', () => {
+        this.view = 'interest';
+        this.error = '';
+        this.render();
+      }),
     );
 
     this.root.querySelector('form.interest')?.addEventListener('submit', (e) => {

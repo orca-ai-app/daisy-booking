@@ -99,6 +99,7 @@ export const STYLES = /* css */ `
   .cta-badge svg { width: 26px; height: 26px; }
   .cta h3 { font-family: 'Quicksand', sans-serif; font-size: 19px; font-weight: 700; color: var(--daisy-ink); margin: 0 0 6px; }
   .cta p { font-size: 14px; line-height: 1.55; color: var(--daisy-ink-soft); margin: 0 auto; max-width: 340px; }
+  .cta-btn { width: auto; margin-top: 18px; padding: 12px 32px; border-radius: 999px; box-shadow: 0 8px 18px rgba(0,111,172,.24); }
 
   /* Trainer block ("About your trainer", under the booking form) */
   .trainer { margin-top: 22px; padding: 16px 18px; background: var(--daisy-primary-tint); border-radius: var(--radius-sm); }

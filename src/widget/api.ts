@@ -173,7 +173,10 @@ export interface PublicItemsResult {
 }
 
 export interface InterestFormInput {
-  postcode: string;
+  /** Omitted for a franchisee-page "Request a class" enquiry (no postcode). */
+  postcode?: string;
+  /** Set for a franchisee-page request so the enquiry emails that trainer. */
+  franchisee_id?: string;
   num_attendees: number;
   contact_name: string;
   contact_email: string;
