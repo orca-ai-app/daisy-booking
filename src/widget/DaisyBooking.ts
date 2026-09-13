@@ -591,9 +591,15 @@ export class DaisyBooking extends HTMLElement {
       // An active territory with nothing scheduled hands the customer to the
       // area's own trainer rather than a dead end. Vacant/unclaimed areas
       // never reach here — they get the HQ interest form instead.
+      // Franchisee mode (a trainer's own Book Online button, no postcode) with
+      // nothing scheduled: point the customer to the trainer for upcoming or
+      // bespoke dates rather than a dead end. The postcode-search fallback keeps
+      // its neutral wording.
       const contactCard =
         this.localTrainerCard() ||
-        `<p class="sub">There are no classes scheduled here just yet. Please check back soon.</p>`;
+        (fromSearch
+          ? `<p class="sub">There are no classes scheduled here just yet. Please check back soon.</p>`
+          : `<p class="sub">No classes are available to book online right now. Please contact the trainer for upcoming dates or a bespoke class.</p>`);
       return `
         ${fromSearch ? this.backBtn() : ''}
         <div class="empty">
