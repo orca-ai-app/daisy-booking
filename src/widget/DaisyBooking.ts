@@ -344,10 +344,15 @@ export class DaisyBooking extends HTMLElement {
       this.render();
       return;
     }
-    // G11: never let a customer pay for a ticket the class can no longer seat.
+    // G11: never let a customer pay for seats the class can no longer hold —
+    // quantity × the ticket's places must fit the remaining pool.
+    const qty = Math.max(1, Number(data.get('qty') ?? 1) || 1);
     const ticket = this.selected!.ticket_types.find((t) => t.id === ticketId);
-    if (ticket && seatsFor(ticket) > this.selected!.spots_remaining) {
-      this.error = 'That ticket needs more places than this class has left. Please choose another.';
+    if (ticket && seatsFor(ticket) * qty > this.selected!.spots_remaining) {
+      this.error =
+        qty > 1
+          ? 'That many tickets need more places than this class has left. Try fewer, or another ticket.'
+          : 'That ticket needs more places than this class has left. Please choose another.';
       this.render();
       return;
     }
@@ -363,7 +368,7 @@ export class DaisyBooking extends HTMLElement {
     await this.startCheckout({
       course_instance_id: this.selected!.id,
       ticket_type_id: ticketId,
-      quantity: 1,
+      quantity: qty,
       discount_code: discountCode || undefined,
       customer: this.readCustomer(data),
     });
@@ -745,6 +750,11 @@ export class DaisyBooking extends HTMLElement {
           }
           ${tickets}
         </div>
+        <div class="field">
+          <label for="tqty">How many?</label>
+          <select id="tqty" name="qty">${this.qtyOptions(preselectId)}</select>
+          <p class="hint">Book for your whole group in one go — each one comes off the places above.</p>
+        </div>
         ${this.customerFields()}
         <div class="field">
           <label for="tdiscount">Discount code (optional)</label>
@@ -796,6 +806,24 @@ export class DaisyBooking extends HTMLElement {
    * rather than being hidden: seeing "Couples — not enough places left" tells
    * the customer something useful, silently dropping the option does not.
    */
+  /**
+   * Options for the "How many?" selector: how many of the chosen ticket fit in
+   * the remaining pool (a Couple ticket eating 2 places halves it), capped at
+   * 10 to keep the list sane. The backend re-validates and reserves
+   * seats_consumed × quantity, so this is UX, not the guard.
+   */
+  private qtyOptions(ticketId?: string): string {
+    const c = this.selected!;
+    const t = c.ticket_types.find((x) => x.id === (ticketId ?? this.formValues.ticket));
+    const per = t ? seatsFor(t) : 1;
+    const max = Math.max(1, Math.min(10, Math.floor(c.spots_remaining / per)));
+    const chosen = Number(this.formValues.qty ?? '1');
+    return Array.from({ length: max }, (_, i) => {
+      const n = i + 1;
+      return `<option value="${n}"${n === chosen ? ' selected' : ''}>${n}</option>`;
+    }).join('');
+  }
+
   private ticketOption(t: TicketType, remaining: number, preselectId?: string): string {
     // Both fields are optional until the API ships them — render nothing when absent.
     const session = t.session_label
@@ -1040,6 +1068,17 @@ export class DaisyBooking extends HTMLElement {
       e.preventDefault();
       this.guard('checkout', () => this.continueToPayment(e.target as HTMLFormElement));
     });
+    // Changing ticket re-scopes "How many?" — a 2-place Couple ticket halves
+    // what fits in the remaining pool. Keep the chosen count when it still fits.
+    this.root.querySelectorAll('form.tickets input[name="ticket"]').forEach((el) =>
+      el.addEventListener('change', () => {
+        const sel = this.root.querySelector('#tqty') as HTMLSelectElement | null;
+        if (!sel) return;
+        this.formValues.qty = sel.value;
+        this.formValues.ticket = (el as HTMLInputElement).value;
+        sel.innerHTML = this.qtyOptions((el as HTMLInputElement).value);
+      }),
+    );
     this.root
       .querySelector('#tdiscount')
       ?.addEventListener('blur', () => this.guard('discount-check', () => this.checkDiscount()));
