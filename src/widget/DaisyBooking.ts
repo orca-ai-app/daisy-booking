@@ -632,9 +632,17 @@ export class DaisyBooking extends HTMLElement {
     }
     const cards = this.courses
       .map((c) => {
-        const priceFrom = c.ticket_types.length
-          ? Math.min(...c.ticket_types.map((t) => t.price_pence))
-          : 0;
+        // B2B tickets advertise at the ex-VAT price on the card ("from £99.00
+        // + VAT", not the gross) — the inside view still shows the full
+        // "£99.00 + VAT £19.80 = £118.80" breakdown.
+        const cheapest = c.ticket_types.length
+          ? c.ticket_types.reduce((a, b) => (a.price_pence <= b.price_pence ? a : b))
+          : null;
+        let priceLabel = `from ${formatPence(cheapest?.price_pence ?? 0)}`;
+        if (cheapest?.vat_exclusive && typeof cheapest.vat_rate === 'number' && cheapest.vat_rate > 0) {
+          const ex = Math.round(cheapest.price_pence / (1 + cheapest.vat_rate / 100));
+          priceLabel = `from ${formatPence(ex)} + VAT`;
+        }
         const dist = c.distance_miles != null ? ` · ${c.distance_miles} mi` : '';
         const full = isSoldOut(c);
         const desc = courseDescription(c);
@@ -649,7 +657,7 @@ export class DaisyBooking extends HTMLElement {
               <span>${formatTime(c.start_time)}–${formatTime(c.end_time)}</span>
               <span>${escapeHtml(c.venue_name ?? c.venue_postcode ?? '')}${dist}</span>
               <span>with ${escapeHtml(c.franchisee_business || c.franchisee_name || 'Daisy First Aid')}</span>
-              <span class="price">from ${formatPence(priceFrom)}</span>
+              <span class="price">${priceLabel}</span>
             </div>
             ${this.spotsLine(c)}
           </div>`;
