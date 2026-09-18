@@ -272,6 +272,9 @@ export interface CheckoutInput {
   customer: { first_name: string; last_name: string; email: string; phone: string; postcode: string };
   discount_code?: string;
   origin?: string;
+  /** Private/home/workplace bookings: where the class is delivered (required) and any parking/access notes (optional). */
+  service_address?: string;
+  parking_notes?: string;
 }
 
 export interface DiscountResult {

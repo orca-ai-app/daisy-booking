@@ -54,6 +54,13 @@ const MIN_PHONE_DIGITS = 10;
 export class DaisyBooking extends HTMLElement {
   private root: ShadowRoot;
   private view: View = 'postcode';
+  /**
+   * Set when the widget is opened via a private booking link (/book/:token).
+   * A token booking is a private/home/workplace class delivered at the
+   * customer's address, so we ask for that address and any parking notes
+   * (migration 058). Public search bookings leave this null.
+   */
+  private bookingToken: string | null = null;
   /** What the customer typed into the search box: a postcode OR a town (G8). */
   private postcode = '';
   /** The place name the server matched a town search to, when it was a town. */
@@ -88,6 +95,7 @@ export class DaisyBooking extends HTMLElement {
     const token = this.getAttribute('token');
     if (token) {
       // /book/:token — single-course mode: jump straight to the ticket form.
+      this.bookingToken = token;
       this.view = 'searching';
       this.render();
       void this.loadByToken(token);
@@ -371,6 +379,13 @@ export class DaisyBooking extends HTMLElement {
       quantity: qty,
       discount_code: discountCode || undefined,
       customer: this.readCustomer(data),
+      // Private/home/workplace booking only: where the class runs + access notes.
+      ...(this.bookingToken
+        ? {
+            service_address: String(data.get('service_address') ?? '').trim(),
+            parking_notes: String(data.get('parking_notes') ?? '').trim() || undefined,
+          }
+        : {}),
     });
   }
 
@@ -422,6 +437,11 @@ export class DaisyBooking extends HTMLElement {
     }
     if (!postcode) return 'Please enter your postcode.';
     if (!UK_POSTCODE_RE.test(postcode)) return 'Please enter a valid UK postcode.';
+    // Private/home/workplace booking: the trainer needs somewhere to go.
+    if (this.bookingToken) {
+      const address = String(data.get('service_address') ?? '').trim();
+      if (!address) return 'Please enter the address where the class will take place.';
+    }
     return '';
   }
 
@@ -763,7 +783,7 @@ export class DaisyBooking extends HTMLElement {
           <select id="tqty" name="qty">${this.qtyOptions(preselectId)}</select>
           <p class="hint">Book for your whole group in one go — each one comes off the places above.</p>
         </div>
-        ${this.customerFields()}
+        ${this.customerFields(!!this.bookingToken)}
         <div class="field">
           <label for="tdiscount">Discount code (optional)</label>
           <input id="tdiscount" name="discount" placeholder="Have a code?" ${this.val('discount')} />
@@ -863,7 +883,15 @@ export class DaisyBooking extends HTMLElement {
    * Phone and postcode are compulsory since round 2 (G3) — field order and
    * styling are unchanged, only the labels and the `required` flags.
    */
-  private customerFields(): string {
+  private customerFields(includeAddress = false): string {
+    // Private/home/workplace bookings (migration 058): the class comes to the
+    // customer, so ask where it will take place and any parking/access notes.
+    // Only shown on the private booking form, never on the item buy form.
+    const addressBlock = includeAddress
+      ? `
+        <div class="field"><label for="taddr">Address where the class will take place</label><input id="taddr" name="service_address" ${this.val('service_address')} autocomplete="street-address" required /></div>
+        <div class="field"><label for="tparking">Parking or access notes <span style="color:var(--daisy-muted);font-weight:normal;">(optional)</span></label><input id="tparking" name="parking_notes" ${this.val('parking_notes')} placeholder="e.g. permit needed, buzzer for flat 3" /></div>`
+      : '';
     return `
         <div class="row">
           <div class="field"><label for="tname">First name</label><input id="tname" name="name" ${this.val('name')} required /></div>
@@ -873,7 +901,7 @@ export class DaisyBooking extends HTMLElement {
         <div class="row">
           <div class="field"><label for="tphone">Phone</label><input id="tphone" name="phone" type="tel" autocomplete="tel" ${this.val('phone')} required /></div>
           <div class="field"><label for="tpc">Postcode</label><input id="tpc" name="postcode" autocomplete="postal-code" ${this.val('postcode')} required /></div>
-        </div>`;
+        </div>${addressBlock}`;
   }
 
   /** "incl. VAT @ N%" note, rendered only when the API supplies a rate. */
