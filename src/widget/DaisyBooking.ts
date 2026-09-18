@@ -61,6 +61,15 @@ export class DaisyBooking extends HTMLElement {
    * (migration 058). Public search bookings leave this null.
    */
   private bookingToken: string | null = null;
+  /**
+   * Whether this booking must capture the customer's address + parking. True for
+   * every private /book/:token booking, and for any public class the franchisee
+   * flagged as delivered at the customer's address (home/workplace, migration
+   * 059) — there venue_postcode is only the advertised area, not where it runs.
+   */
+  private get needsAddress(): boolean {
+    return !!this.bookingToken || this.selected?.delivered_at_address === true;
+  }
   /** What the customer typed into the search box: a postcode OR a town (G8). */
   private postcode = '';
   /** The place name the server matched a town search to, when it was a town. */
@@ -379,8 +388,10 @@ export class DaisyBooking extends HTMLElement {
       quantity: qty,
       discount_code: discountCode || undefined,
       customer: this.readCustomer(data),
-      // Private/home/workplace booking only: where the class runs + access notes.
-      ...(this.bookingToken
+      // Home/workplace bookings: where the class runs + access notes. Every
+      // private /book/:token booking, plus any public class the franchisee
+      // flagged as delivered at the customer's address (migration 059).
+      ...(this.needsAddress
         ? {
             service_address: String(data.get('service_address') ?? '').trim(),
             parking_notes: String(data.get('parking_notes') ?? '').trim() || undefined,
@@ -437,8 +448,8 @@ export class DaisyBooking extends HTMLElement {
     }
     if (!postcode) return 'Please enter your postcode.';
     if (!UK_POSTCODE_RE.test(postcode)) return 'Please enter a valid UK postcode.';
-    // Private/home/workplace booking: the trainer needs somewhere to go.
-    if (this.bookingToken) {
+    // Home/workplace booking: the trainer needs somewhere to go.
+    if (this.needsAddress) {
       const address = String(data.get('service_address') ?? '').trim();
       if (!address) return 'Please enter the address where the class will take place.';
     }
@@ -783,7 +794,7 @@ export class DaisyBooking extends HTMLElement {
           <select id="tqty" name="qty">${this.qtyOptions(preselectId)}</select>
           <p class="hint">Book for your whole group in one go — each one comes off the places above.</p>
         </div>
-        ${this.customerFields(!!this.bookingToken)}
+        ${this.customerFields(this.needsAddress)}
         <div class="field">
           <label for="tdiscount">Discount code (optional)</label>
           <input id="tdiscount" name="discount" placeholder="Have a code?" ${this.val('discount')} />

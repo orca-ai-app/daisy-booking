@@ -83,6 +83,13 @@ export interface CourseCard {
   end_time: string;
   venue_name: string | null;
   venue_postcode: string | null;
+  /**
+   * The class runs at the customer's own address (home/workplace), so the
+   * booking form asks the customer for their address + parking even on the
+   * public flow (migration 059). For these, venue_postcode is only the
+   * advertised area, not where the class actually happens.
+   */
+  delivered_at_address?: boolean;
   distance_miles: number | null;
   franchisee_name: string;
   /** Trading name ("Daisy First Aid Redhill") — who the customer books with. */
