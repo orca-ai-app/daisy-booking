@@ -90,6 +90,12 @@ export interface CourseCard {
    * advertised area, not where the class actually happens.
    */
   delivered_at_address?: boolean;
+  /**
+   * Public or private. Lets the widget mirror the server's checkout address
+   * gate exactly (private OR delivered_at_address). Present on the /book/:token
+   * path; null on public search (only public rows, so the flag decides).
+   */
+  visibility?: 'public' | 'private' | null;
   distance_miles: number | null;
   franchisee_name: string;
   /** Trading name ("Daisy First Aid Redhill") — who the customer books with. */

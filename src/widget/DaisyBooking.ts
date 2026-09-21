@@ -55,20 +55,17 @@ export class DaisyBooking extends HTMLElement {
   private root: ShadowRoot;
   private view: View = 'postcode';
   /**
-   * Set when the widget is opened via a private booking link (/book/:token).
-   * A token booking is a private/home/workplace class delivered at the
-   * customer's address, so we ask for that address and any parking notes
-   * (migration 058). Public search bookings leave this null.
-   */
-  private bookingToken: string | null = null;
-  /**
-   * Whether this booking must capture the customer's address + parking. True for
-   * every private /book/:token booking, and for any public class the franchisee
-   * flagged as delivered at the customer's address (home/workplace, migration
-   * 059) — there venue_postcode is only the advertised area, not where it runs.
+   * Whether this booking must capture the customer's address + parking. Mirrors
+   * the create-checkout-session gate exactly — private class OR one flagged as
+   * delivered at the customer's address (home/workplace, migration 059). It is
+   * deliberately NOT keyed on the /book/:token link: a public venue class shared
+   * by its booking link must not demand an address (Liane, 19 Sep). Private
+   * classes are only reachable by token and always report visibility='private',
+   * so they still ask; public search returns public rows only, so the flag
+   * decides there.
    */
   private get needsAddress(): boolean {
-    return !!this.bookingToken || this.selected?.delivered_at_address === true;
+    return this.selected?.visibility === 'private' || this.selected?.delivered_at_address === true;
   }
   /** What the customer typed into the search box: a postcode OR a town (G8). */
   private postcode = '';
@@ -104,7 +101,6 @@ export class DaisyBooking extends HTMLElement {
     const token = this.getAttribute('token');
     if (token) {
       // /book/:token — single-course mode: jump straight to the ticket form.
-      this.bookingToken = token;
       this.view = 'searching';
       this.render();
       void this.loadByToken(token);
