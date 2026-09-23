@@ -19,7 +19,7 @@ import {
   type CheckoutInput,
 } from './api';
 import { logger } from './logger';
-import { familyById, familyForCourse } from './courseFamilies';
+import { COURSE_FAMILIES, familyById, familyForCourse } from './courseFamilies';
 
 type View = 'postcode' | 'searching' | 'results' | 'interest' | 'tickets' | 'item';
 
@@ -68,6 +68,14 @@ export class DaisyBooking extends HTMLElement {
   private get needsAddress(): boolean {
     return this.selected?.visibility === 'private' || this.selected?.delivered_at_address === true;
   }
+  /**
+   * Course-family and month filters on the results list ("Find my class"
+   * bundle). Seeded once from the `course-type` / `month` attributes so
+   * pre-filtered links and embeds land already narrowed, then owned by the
+   * dropdowns. Empty string = no filter, list behaves exactly as before.
+   */
+  private familyFilter = '';
+  private monthFilter = '';
   /** What the customer typed into the search box: a postcode OR a town (G8). */
   private postcode = '';
   /** The place name the server matched a town search to, when it was a town. */
@@ -99,6 +107,13 @@ export class DaisyBooking extends HTMLElement {
 
   connectedCallback() {
     if (this.getAttribute('postcode')) this.postcode = this.getAttribute('postcode')!;
+    // Pre-filters from the embed/link (read once, like every other attribute).
+    // An unknown family id is kept: the dropdown shows it and the zero-match
+    // state offers "Show all classes", which beats silently ignoring the link.
+    const fam = (this.getAttribute('course-type') ?? '').trim().toLowerCase();
+    if (fam) this.familyFilter = fam;
+    const month = (this.getAttribute('month') ?? '').trim();
+    if (/^\d{4}-\d{2}$/.test(month)) this.monthFilter = month;
     const token = this.getAttribute('token');
     if (token) {
       // /book/:token — single-course mode: jump straight to the ticket form.
@@ -129,7 +144,9 @@ export class DaisyBooking extends HTMLElement {
    */
   private async loadFranchiseeSchedule() {
     try {
-      const result = await getPublicCourses({ franchisee_id: this.franchiseeId });
+      // limit 100 (server max): the filters narrow client-side, so ask for the
+      // full picture rather than the default 50.
+      const result = await getPublicCourses({ franchisee_id: this.franchiseeId, limit: 100 });
       this.courses = result.courses;
       this.view = 'results';
     } catch (err) {
@@ -188,6 +205,9 @@ export class DaisyBooking extends HTMLElement {
         postcode: pc,
         franchisee_id: this.franchiseeId,
         radius_miles: this.radius,
+        // limit 100 (server max): filters narrow client-side, so fetch the
+        // full picture rather than the default 50.
+        limit: 100,
       });
       this.courses = result.courses;
       // When we searched a town, show the place the server actually matched
@@ -658,7 +678,15 @@ export class DaisyBooking extends HTMLElement {
         </div>
         ${this.itemsSection()}`;
     }
-    const cards = this.courses
+    // "Find my class" filters: narrow the loaded list by family and month.
+    // Both default to '' (off), so an unfiltered list is exactly what it
+    // always was.
+    const filtered = this.courses.filter(
+      (c) =>
+        (!this.familyFilter || familyForCourse(c) === this.familyFilter) &&
+        (!this.monthFilter || c.event_date.startsWith(this.monthFilter)),
+    );
+    const cards = filtered
       .map((c) => {
         // B2B tickets advertise at the ex-VAT price on the card ("from £99.00
         // + VAT", not the gross) — the inside view still shows the full
@@ -697,9 +725,10 @@ export class DaisyBooking extends HTMLElement {
       })
       .join('');
     // Count what they can actually book, and mention the full ones separately,
-    // rather than claiming N upcoming when some are closed (G4).
-    const soldOut = this.courses.filter((c) => isSoldOut(c)).length;
-    const open = this.courses.length - soldOut;
+    // rather than claiming N upcoming when some are closed (G4). Counts follow
+    // the FILTERED list so the summary never disagrees with the cards below it.
+    const soldOut = filtered.filter((c) => isSoldOut(c)).length;
+    const open = filtered.length - soldOut;
     const summary =
       soldOut === 0
         ? `${open} upcoming · each has a date and a venue`
@@ -707,11 +736,76 @@ export class DaisyBooking extends HTMLElement {
           ? `${soldOut} upcoming, all currently full`
           : `${open} available · ${soldOut} currently full`;
     const heading = fromSearch ? `Classes near ${escapeHtml(this.locationLabel)}` : 'Upcoming classes';
+    // A pre-filtered link can land on a list with nothing matching: keep the
+    // filter bar so the choice is visible, say so plainly, and offer the way
+    // out rather than a dead end.
+    const list =
+      filtered.length === 0
+        ? `<div class="empty">
+             <h3>No classes match those filters just now.</h3>
+             <button class="retry" type="button" data-clear-filters>Show all classes</button>
+           </div>`
+        : `<p class="sub">${summary}</p>${cards}`;
     // Lead with the searched area's own trainer so they get priority the moment a
     // postcode is entered, above the class list rather than below it. In busy
     // areas (e.g. London) there are many nearby classes, and burying the local
     // trainer at the bottom means too much scrolling to reach them (Jenni, 11 Sep).
-    return `${fromSearch ? this.backBtn() : ''}${this.localTrainerCard()}<h2>${heading}</h2><p class="sub">${summary}</p>${cards}${this.itemsSection()}`;
+    return `${fromSearch ? this.backBtn() : ''}${this.localTrainerCard()}<h2>${heading}</h2>${this.filterBar()}${list}${this.itemsSection()}`;
+  }
+
+  /**
+   * Course type + month dropdowns for the results list. Options come from the
+   * loaded courses (no dead choices), plus whatever an inbound pre-filter
+   * asked for even when nothing here matches it, so the dropdown always shows
+   * the filter that's actually applied. Hidden when there's nothing to narrow.
+   */
+  private filterBar(): string {
+    const present = new Set(this.courses.map((c) => familyForCourse(c)));
+    const months = [...new Set(this.courses.map((c) => c.event_date.slice(0, 7)))];
+    if (this.monthFilter && !months.includes(this.monthFilter)) months.push(this.monthFilter);
+    months.sort();
+    const showFamilies = present.size > 1 || !!this.familyFilter;
+    const showMonths = months.length > 1 || !!this.monthFilter;
+    if (!showFamilies && !showMonths) return '';
+    const famOptions = COURSE_FAMILIES.filter((f) => present.has(f.id) || f.id === this.familyFilter)
+      .map(
+        (f) =>
+          `<option value="${f.id}"${this.familyFilter === f.id ? ' selected' : ''}>${escapeHtml(f.label)}</option>`,
+      )
+      .join('');
+    const monthLabel = (m: string) => {
+      const [y, mo] = m.split('-').map(Number);
+      return new Date(Date.UTC(y, mo - 1, 1)).toLocaleDateString('en-GB', {
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      });
+    };
+    const monthOptions = months
+      .map(
+        (m) =>
+          `<option value="${escapeHtml(m)}"${this.monthFilter === m ? ' selected' : ''}>${escapeHtml(monthLabel(m))}</option>`,
+      )
+      .join('');
+    return `
+      <div class="filters">
+        ${
+          showFamilies
+            ? `<div class="field"><label for="f-family">Course type</label>
+                 <select id="f-family" data-filter-family>
+                   <option value="">All course types</option>${famOptions}
+                 </select></div>`
+            : ''
+        }
+        ${
+          showMonths
+            ? `<div class="field"><label for="f-month">Month</label>
+                 <select id="f-month" data-filter-month>
+                   <option value="">Any month</option>${monthOptions}
+                 </select></div>`
+            : ''
+        }
+      </div>`;
   }
 
   /**
@@ -1050,6 +1144,22 @@ export class DaisyBooking extends HTMLElement {
         return this.search();
       }),
     );
+
+    // Results-list filters: change re-renders in place (fields survive the
+    // re-render, so the selection sticks across results → tickets → back too).
+    this.root.querySelector('[data-filter-family]')?.addEventListener('change', (e) => {
+      this.familyFilter = (e.target as HTMLSelectElement).value;
+      this.render();
+    });
+    this.root.querySelector('[data-filter-month]')?.addEventListener('change', (e) => {
+      this.monthFilter = (e.target as HTMLSelectElement).value;
+      this.render();
+    });
+    this.root.querySelector('[data-clear-filters]')?.addEventListener('click', () => {
+      this.familyFilter = '';
+      this.monthFilter = '';
+      this.render();
+    });
 
     // `:not(.item)` — item cards share the .card styling but have their own
     // handler. `:not(.full)` — a sold-out class is listed but inert (G4).

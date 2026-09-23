@@ -31,3 +31,10 @@
   from = "/shop/cancelled"
   to = "/shop/cancelled/index.html"
   status = 200
+
+# /search → the standalone class finder with shareable pre-filtered links
+# (?postcode, ?franchisee, ?radius, ?course-type, ?month).
+[[redirects]]
+  from = "/search"
+  to = "/search/index.html"
+  status = 200

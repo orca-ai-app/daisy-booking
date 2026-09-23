@@ -7,6 +7,10 @@ interface DaisyBookingOpenOptions {
   franchisee?: string;
   postcode?: string;
   radius?: number;
+  /** Pre-filter by course family id, e.g. 'paediatric' or 'workplace'. */
+  courseType?: string;
+  /** Pre-filter by month, 'YYYY-MM'. */
+  month?: string;
 }
 
 interface Window {

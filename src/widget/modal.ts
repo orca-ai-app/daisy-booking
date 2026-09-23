@@ -46,6 +46,8 @@ export function open(opts: DaisyBookingOpenOptions = {}) {
   if (opts.franchisee) widget.setAttribute('franchisee', opts.franchisee);
   if (opts.postcode) widget.setAttribute('postcode', opts.postcode);
   if (opts.radius) widget.setAttribute('radius', String(opts.radius));
+  if (opts.courseType) widget.setAttribute('course-type', opts.courseType);
+  if (opts.month) widget.setAttribute('month', opts.month);
   body.appendChild(widget);
 
   prevOverflow = document.body.style.overflow;

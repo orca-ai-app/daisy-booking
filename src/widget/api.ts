@@ -241,6 +241,8 @@ export function getPublicCourses(input: {
   postcode?: string;
   franchisee_id?: string;
   radius_miles?: number;
+  /** Server default is 50, capped at 100. The filters narrow client-side, so ask for 100. */
+  limit?: number;
 }): Promise<PublicCoursesResult> {
   return call<PublicCoursesResult>('get-public-courses', input);
 }

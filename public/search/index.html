@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Find a class — Daisy First Aid</title>
+    <style>
+      :root { --bg: #f5f9fb; --ink: #1a4359; }
+      body { font-family: 'Poppins', system-ui, sans-serif; background: var(--bg); color: var(--ink); margin: 0; min-height: 100vh; padding: 32px 16px; box-sizing: border-box; }
+      .wrap { max-width: 640px; margin: 0 auto; }
+      .brand { font-family: 'Quicksand', sans-serif; font-weight: 700; font-size: 22px; text-align: center; margin: 0 0 20px; color: #006fac; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <p class="brand">Daisy First Aid</p>
+      <div id="mount"></div>
+    </div>
+    <!-- Versioned widget bundle (same one WordPress embeds). -->
+    <script src="/widget/v1/daisy-booking.js" defer></script>
+    <script>
+      // Shareable pre-filtered links ("Find my class" bundle): every widget
+      // attribute can arrive as a query param, so a franchisee can send
+      //   /search?franchisee=0086&course-type=paediatric
+      // and the customer lands on that trainer's paediatric classes only.
+      // With no params at all this is simply the class finder.
+      const params = new URLSearchParams(location.search);
+      window.addEventListener('DOMContentLoaded', () => {
+        const el = document.createElement('daisy-booking');
+        for (const attr of ['postcode', 'franchisee', 'radius', 'course-type', 'month']) {
+          const v = params.get(attr);
+          if (v) el.setAttribute(attr, v);
+        }
+        document.getElementById('mount').appendChild(el);
+      });
+    </script>
+  </body>
+</html>

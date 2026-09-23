@@ -34,7 +34,22 @@ The widget ships as one script served from `https://booking.daisyfirstaid.com/wi
 ```
 
 Optional attributes: `franchisee="0042"` (filter to one franchisee's courses), `radius="15"` (miles),
-`theme="light"`.
+`course-type="paediatric"` (pre-filter to one course family), `month="2026-10"` (pre-filter to one
+month), `theme="light"`.
+
+Course family ids for `course-type`: `baby-family`, `paediatric`, `workplace`, `teaching-children`,
+`online`, `bespoke-other` (the six colour-coded families from the approved scheme; the mapping lives
+in `src/widget/courseFamilies.ts`). Customers can always change or clear the filter from the
+dropdowns on the results list.
+
+**Shareable pre-filtered links.** `https://booking.daisyfirstaid.com/search` renders the finder
+standalone and accepts every attribute as a query parameter, so a link can land a customer on an
+already-narrowed list:
+
+```
+https://booking.daisyfirstaid.com/search?franchisee=0086&course-type=paediatric
+https://booking.daisyfirstaid.com/search?postcode=TN1+1AA&course-type=baby-family&month=2026-11
+```
 
 **Pattern B — "Book Online" button → modal.** Keep Emma's existing Divi button; give it the class
 `book-online-trigger` and add this once on the page (Code module):
@@ -48,8 +63,8 @@ Optional attributes: `franchisee="0042"` (filter to one franchisee's courses), `
 </script>
 ```
 
-`window.daisyBooking.open({ franchisee, postcode, radius })` opens the booking modal in-page; the only
-hard redirect is the Stripe payment step itself (Wave 11).
+`window.daisyBooking.open({ franchisee, postcode, radius, courseType, month })` opens the booking
+modal in-page; the only hard redirect is the Stripe payment step itself (Wave 11).
 
 ## Status
 
