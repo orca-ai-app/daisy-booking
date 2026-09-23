@@ -38,3 +38,12 @@
   from = "/search"
   to = "/search/index.html"
   status = 200
+
+# The bare site root serves the class finder too — people inevitably drop the
+# /search, and a 404 at booking.daisyfirstaid.com/ is a dead end. Query params
+# pass through the rewrite, so /?franchisee=...&course-type=... behaves exactly
+# like /search?....
+[[redirects]]
+  from = "/"
+  to = "/search/index.html"
+  status = 200
