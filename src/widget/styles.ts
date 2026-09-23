@@ -16,6 +16,13 @@ export const STYLES = /* css */ `
     --daisy-paper: #FFFFFF;
     --daisy-orange: #DF542F;
     --daisy-green: #67A671;
+    /* Course-family colours (Jenni-approved scheme, 17 Sep 2026). */
+    --fam-baby-family: #E85D9E;
+    --fam-paediatric: #006FAC;
+    --fam-workplace: #F0745A;
+    --fam-teaching-children: #67A671;
+    --fam-online: #FFCB05;
+    --fam-bespoke-other: #8E6BC1;
     --radius: 12px;
     --radius-sm: 8px;
     font-family: 'Poppins', system-ui, -apple-system, sans-serif;
@@ -69,6 +76,24 @@ export const STYLES = /* css */ `
   .spots.out { color: var(--daisy-muted); text-transform: uppercase; letter-spacing: .04em; }
   .card.full { cursor: default; opacity: .72; background: var(--daisy-bg); }
   .card.full:hover { border-color: var(--daisy-line); box-shadow: none; }
+  /* Colour coding by course family: a coloured left edge + a small badge.
+     One class ("family-<id>") drives both. */
+  .card.family-baby-family { border-left: 4px solid var(--fam-baby-family); }
+  .card.family-paediatric { border-left: 4px solid var(--fam-paediatric); }
+  .card.family-workplace { border-left: 4px solid var(--fam-workplace); }
+  .card.family-teaching-children { border-left: 4px solid var(--fam-teaching-children); }
+  .card.family-online { border-left: 4px solid var(--fam-online); }
+  .card.family-bespoke-other { border-left: 4px solid var(--fam-bespoke-other); }
+  .fam-badge { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .03em; border-radius: 999px; padding: 2px 10px; margin: 0 8px 6px 0; color: #fff; }
+  .fam-badge.family-baby-family { background: var(--fam-baby-family); }
+  .fam-badge.family-paediatric { background: var(--fam-paediatric); }
+  .fam-badge.family-workplace { background: var(--fam-workplace); }
+  .fam-badge.family-teaching-children { background: var(--fam-teaching-children); }
+  .fam-badge.family-online { background: var(--fam-online); color: var(--daisy-ink); }
+  .fam-badge.family-bespoke-other { background: var(--fam-bespoke-other); }
+  /* Course type + month filters above the results list. */
+  .filters { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 16px; }
+  .filters .field { flex: 1; min-width: 170px; margin: 0; }
   /* Ticket options — all drawn from the class's one shared pool (G11). */
   p.pool { margin: 0 0 10px; font-size: 12px; color: var(--daisy-muted); }
   label.ticket { display: flex; align-items: center; gap: 8px; text-transform: none; font-weight: 500; color: var(--daisy-ink); margin-bottom: 8px; }

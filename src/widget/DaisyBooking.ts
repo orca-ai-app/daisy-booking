@@ -19,6 +19,7 @@ import {
   type CheckoutInput,
 } from './api';
 import { logger } from './logger';
+import { familyById, familyForCourse } from './courseFamilies';
 
 type View = 'postcode' | 'searching' | 'results' | 'interest' | 'tickets' | 'item';
 
@@ -673,9 +674,14 @@ export class DaisyBooking extends HTMLElement {
         const dist = c.distance_miles != null ? ` · ${c.distance_miles} mi` : '';
         const full = isSoldOut(c);
         const desc = courseDescription(c);
+        // Colour coding by course family (Jenni-approved scheme): the family
+        // class drives the card's coloured edge and the badge.
+        const fam = familyForCourse(c);
+        const famLabel = familyById(fam)?.label ?? '';
         return `
-          <div class="card${full ? ' full' : ''}" data-id="${c.id}"
+          <div class="card${full ? ' full' : ''} family-${fam}" data-id="${c.id}"
                ${full ? 'aria-disabled="true"' : 'role="button" tabindex="0"'}>
+            ${famLabel ? `<span class="fam-badge family-${fam}">${escapeHtml(famLabel)}</span>` : ''}
             <h3>${escapeHtml(c.template_name)}</h3>
             ${c.age_range ? `<div class="agerange">Suitable for ${escapeHtml(c.age_range)}</div>` : ''}
             ${desc ? `<p class="desc">${escapeHtml(truncate(desc, 140))}</p>` : ''}
