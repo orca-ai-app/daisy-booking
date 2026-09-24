@@ -25,6 +25,26 @@ function build(): { host: HTMLElement; dialog: HTMLDialogElement } {
   document.body.appendChild(h);
 
   dlg.querySelector('.close')!.addEventListener('click', () => close());
+
+  // Scroll the body ourselves on wheel. Divi's smoothscroll.js (and similar
+  // host-page scripts) cancel every wheel event and walk up from event.target
+  // looking for something scrollable; Shadow DOM retargets our events to the
+  // host <div class="modal">, so they only ever find <body>, which is locked,
+  // and nothing moves. Verified live on daisyfirstaid.com (TRI-0021, Feola,
+  // Mac, 24 Sep). Touch scrolling is not intercepted, hence desktop-only.
+  const body = dlg.querySelector<HTMLElement>('.modal-body')!;
+  body.addEventListener(
+    'wheel',
+    (e) => {
+      const dy =
+        e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * body.clientHeight : e.deltaY;
+      body.scrollTop += dy;
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    { passive: false },
+  );
+
   // Backdrop click (clicks landing on the dialog element itself, not its content).
   dlg.addEventListener('click', (e) => {
     if (e.target === dlg) close();
