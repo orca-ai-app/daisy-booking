@@ -55,7 +55,8 @@ export const STYLES = /* css */ `
   }
   button.primary:hover { background: var(--daisy-primary-deep); }
   button.primary:disabled { opacity: .55; cursor: not-allowed; }
-  button.link { background: none; border: none; color: var(--daisy-primary); font: inherit; font-weight: 600; cursor: pointer; padding: 10px 0; min-height: 44px; text-decoration: underline; }
+  button.link, a.link { background: none; border: none; color: var(--daisy-primary); font: inherit; font-weight: 600; cursor: pointer; padding: 10px 0; min-height: 44px; text-decoration: underline; }
+  a.link { display: inline-block; }
   button.retry {
     background: none; color: var(--daisy-primary); border: 2px solid var(--daisy-primary); border-radius: var(--radius-sm);
     padding: 10px 16px; min-height: 44px; font: inherit; font-weight: 700; cursor: pointer; width: 100%; margin-top: 10px;

@@ -27,6 +27,9 @@
       const params = new URLSearchParams(location.search);
       window.addEventListener('DOMContentLoaded', () => {
         const el = document.createElement('daisy-booking');
+        // Standalone surface: lets the widget show "Back to [trainer]'s page"
+        // in franchisee mode (hidden when embedded on the trainer's own page).
+        el.setAttribute('standalone', '');
         for (const attr of ['postcode', 'franchisee', 'radius', 'course-type', 'month']) {
           const v = params.get(attr);
           if (v) el.setAttribute(attr, v);

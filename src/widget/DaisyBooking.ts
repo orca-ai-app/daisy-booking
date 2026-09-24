@@ -76,6 +76,12 @@ export class DaisyBooking extends HTMLElement {
    */
   private familyFilter = '';
   private monthFilter = '';
+  /**
+   * Set by the standalone /search page. In franchisee mode it adds a link
+   * back to the trainer's own page on daisyfirstaid.com — pointless when the
+   * widget is embedded ON that page, which is why it's opt-in.
+   */
+  private standalone = false;
   /** What the customer typed into the search box: a postcode OR a town (G8). */
   private postcode = '';
   /** The place name the server matched a town search to, when it was a town. */
@@ -114,6 +120,7 @@ export class DaisyBooking extends HTMLElement {
     if (fam) this.familyFilter = fam;
     const month = (this.getAttribute('month') ?? '').trim();
     if (/^\d{4}-\d{2}$/.test(month)) this.monthFilter = month;
+    this.standalone = this.hasAttribute('standalone');
     const token = this.getAttribute('token');
     if (token) {
       // /book/:token — single-course mode: jump straight to the ticket form.
@@ -750,7 +757,22 @@ export class DaisyBooking extends HTMLElement {
     // postcode is entered, above the class list rather than below it. In busy
     // areas (e.g. London) there are many nearby classes, and burying the local
     // trainer at the bottom means too much scrolling to reach them (Jenni, 11 Sep).
-    return `${fromSearch ? this.backBtn() : ''}${this.localTrainerCard()}<h2>${heading}</h2>${this.filterBar()}${list}${this.itemsSection()}`;
+    return `${fromSearch ? this.backBtn() : ''}${!fromSearch ? this.trainerPageLink() : ''}${this.localTrainerCard()}<h2>${heading}</h2>${this.filterBar()}${list}${this.itemsSection()}`;
+  }
+
+  /**
+   * Standalone /search + franchisee mode only: a link back to the trainer's
+   * own page on daisyfirstaid.com, so a shared filtered link can hand the
+   * customer back to the trainer's page rather than dead-ending. Hidden when
+   * the widget is embedded on that very page.
+   */
+  private trainerPageLink(): string {
+    if (!this.standalone) return '';
+    const c = this.courses[0];
+    const url = c?.franchisee_website;
+    if (!url || !/^https:\/\//.test(url)) return '';
+    const name = c?.franchisee_business || c?.franchisee_name || 'the trainer';
+    return `<div class="back"><a class="link" href="${escapeHtml(url)}">← Back to ${escapeHtml(name)}'s page</a></div>`;
   }
 
   /**
