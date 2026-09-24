@@ -143,7 +143,7 @@ export const STYLES = /* css */ `
   @media (max-width: 480px) { .trainer-row { flex-direction: column; } }
 
   /* Modal (<dialog>) */
-  dialog.daisy-modal { border: none; border-radius: var(--radius); padding: 0; max-width: 560px; width: 92vw; box-shadow: 0 20px 60px rgba(0,40,70,.35); max-height: 90dvh; display: flex; flex-direction: column; }
+  dialog.daisy-modal { border: none; border-radius: var(--radius); padding: 0; max-width: 560px; width: 92vw; box-shadow: 0 20px 60px rgba(0,40,70,.35); max-height: 90vh; max-height: 90dvh; display: flex; flex-direction: column; }
   dialog.daisy-modal::backdrop { background: rgba(10,40,60,.55); }
   .modal-head { display: flex; justify-content: flex-end; padding: 8px 8px 0; }
   /* The body scrolls INSIDE the dialog. Without this, a long class list
@@ -152,6 +152,6 @@ export const STYLES = /* css */ `
   .modal-body { padding: 0 20px 22px; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; flex: 1 1 auto; min-height: 0; }
   button.close { background: none; border: none; font-size: 22px; line-height: 1; color: var(--daisy-muted); cursor: pointer; padding: 6px 10px; }
   @media (max-width: 560px) {
-    dialog.daisy-modal { width: 100vw; height: 100dvh; max-width: none; border-radius: 0; }
+    dialog.daisy-modal { width: 100vw; height: 100vh; height: 100dvh; max-width: none; border-radius: 0; }
   }
 `;

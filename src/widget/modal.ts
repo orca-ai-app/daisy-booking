@@ -7,7 +7,8 @@ import { STYLES } from './styles';
 
 let host: HTMLElement | null = null;
 let dialog: HTMLDialogElement | null = null;
-let prevOverflow = '';
+let prevBodyOverflow = '';
+let prevHtmlOverflow = '';
 
 function build(): { host: HTMLElement; dialog: HTMLDialogElement } {
   const h = document.createElement('div');
@@ -29,7 +30,8 @@ function build(): { host: HTMLElement; dialog: HTMLDialogElement } {
     if (e.target === dlg) close();
   });
   dlg.addEventListener('close', () => {
-    document.body.style.overflow = prevOverflow;
+    document.body.style.overflow = prevBodyOverflow;
+    document.documentElement.style.overflow = prevHtmlOverflow;
   });
   return { host: h, dialog: dlg };
 }
@@ -50,8 +52,13 @@ export function open(opts: DaisyBookingOpenOptions = {}) {
   if (opts.month) widget.setAttribute('month', opts.month);
   body.appendChild(widget);
 
-  prevOverflow = document.body.style.overflow;
+  // Lock BOTH <html> and <body>. Many WordPress/Divi themes make the real
+  // scroller the documentElement (or a page wrapper), so locking body alone
+  // leaves the page scrolling behind the modal (Feola, Mac, 24 Sep).
+  prevBodyOverflow = document.body.style.overflow;
+  prevHtmlOverflow = document.documentElement.style.overflow;
   document.body.style.overflow = 'hidden';
+  document.documentElement.style.overflow = 'hidden';
   if (!dialog.open) dialog.showModal();
 }
 
