@@ -69,6 +69,15 @@ export class DaisyBooking extends HTMLElement {
     return this.selected?.visibility === 'private' || this.selected?.delivered_at_address === true;
   }
   /**
+   * Whether the address is compulsory. Only a PUBLIC class flagged as
+   * delivered at the customer's address: that booker is the host. A private
+   * class link is often shared with a whole group who may not know the
+   * address (TRI-0024), so there it is optional. Mirrors create-checkout-session.
+   */
+  private get addressRequired(): boolean {
+    return this.selected?.visibility !== 'private' && this.selected?.delivered_at_address === true;
+  }
+  /**
    * Course-family and month filters on the results list ("Find my class"
    * bundle). Seeded once from the `course-type` / `month` attributes so
    * pre-filtered links and embeds land already narrowed, then owned by the
@@ -473,7 +482,7 @@ export class DaisyBooking extends HTMLElement {
     if (!postcode) return 'Please enter your postcode.';
     if (!UK_POSTCODE_RE.test(postcode)) return 'Please enter a valid UK postcode.';
     // Home/workplace booking: the trainer needs somewhere to go.
-    if (this.needsAddress) {
+    if (this.addressRequired) {
       const address = String(data.get('service_address') ?? '').trim();
       if (!address) return 'Please enter the address where the class will take place.';
     }
@@ -912,7 +921,7 @@ export class DaisyBooking extends HTMLElement {
           <select id="tqty" name="qty">${this.qtyOptions(preselectId)}</select>
           <p class="hint">Book for your whole group in one go — each one comes off the places above.</p>
         </div>
-        ${this.customerFields(this.needsAddress)}
+        ${this.customerFields(this.needsAddress, this.addressRequired)}
         <div class="field">
           <label for="tdiscount">Discount code (optional)</label>
           <input id="tdiscount" name="discount" placeholder="Have a code?" ${this.val('discount')} />
@@ -1012,13 +1021,13 @@ export class DaisyBooking extends HTMLElement {
    * Phone and postcode are compulsory since round 2 (G3) — field order and
    * styling are unchanged, only the labels and the `required` flags.
    */
-  private customerFields(includeAddress = false): string {
+  private customerFields(includeAddress = false, addressRequired = true): string {
     // Private/home/workplace bookings (migration 058): the class comes to the
     // customer, so ask where it will take place and any parking/access notes.
     // Only shown on the private booking form, never on the item buy form.
     const addressBlock = includeAddress
       ? `
-        <div class="field"><label for="taddr">Address where the class will take place</label><input id="taddr" name="service_address" ${this.val('service_address')} autocomplete="street-address" required /></div>
+        <div class="field"><label for="taddr">Address where the class will take place${addressRequired ? '' : ' <span style="color:var(--daisy-muted);font-weight:normal;">(optional)</span>'}</label><input id="taddr" name="service_address" ${this.val('service_address')} autocomplete="street-address" ${addressRequired ? 'required' : ''} />${addressRequired ? '' : '<p class="hint">Leave blank if you don\'t know it. Your trainer has the class details.</p>'}</div>
         <div class="field"><label for="tparking">Parking or access notes <span style="color:var(--daisy-muted);font-weight:normal;">(optional)</span></label><input id="tparking" name="parking_notes" ${this.val('parking_notes')} placeholder="e.g. permit needed, buzzer for flat 3" /></div>`
       : '';
     return `
