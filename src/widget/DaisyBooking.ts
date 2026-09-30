@@ -51,6 +51,8 @@ const MIN_PHONE_DIGITS = 10;
  * Alongside dated classes a franchisee may offer undated items (books,
  * e-learning) that are on sale at any time — they render under the class
  * results and share the same customer-capture form and checkout redirect.
+ * With `item="<franchisee product id>"` as well as `franchisee`, the widget
+ * opens straight onto that one item (the per-item shop link, TRI-0045).
  */
 export class DaisyBooking extends HTMLElement {
   private root: ShadowRoot;
@@ -100,6 +102,16 @@ export class DaisyBooking extends HTMLElement {
   private selected: CourseCard | null = null;
   private items: ItemCard[] = [];
   private selectedItem: ItemCard | null = null;
+  /**
+   * True once franchisee mode's schedule has loaded (even if empty), so Back
+   * from an item returns to the trainer's list rather than the search box.
+   */
+  private scheduleLoaded = false;
+  /**
+   * Shown above the trainer's list when a single-item link (`item`) could not
+   * open its item: removed, switched off or mistyped. Cleared on navigation.
+   */
+  private linkNotice = '';
   private error = '';
   private busy = false;
   private canRetrySearch = false;
@@ -150,6 +162,16 @@ export class DaisyBooking extends HTMLElement {
       void this.loadByToken(token);
       return;
     }
+    // Single-item link (TRI-0045): /search?franchisee=0031&item=<id> opens
+    // straight onto one shop item, the way /book/:token opens a class. Needs
+    // the franchisee, because items are only listed per franchisee.
+    const itemId = (this.getAttribute('item') ?? '').trim();
+    if (itemId && this.franchiseeId && !this.postcode) {
+      this.view = 'searching';
+      this.render();
+      void this.loadItemLink(itemId);
+      return;
+    }
     if (this.franchiseeId && !this.postcode) {
       // Franchisee mode (the Book Online button on a trainer's page): the
       // visitor is already on that trainer's page, so don't ask for a
@@ -171,15 +193,51 @@ export class DaisyBooking extends HTMLElement {
    * the listing cannot load.
    */
   private async loadFranchiseeSchedule() {
+    this.view = (await this.fetchFranchiseeSchedule()) ? 'results' : 'postcode';
+    this.render();
+  }
+
+  /**
+   * Fetch the trainer's upcoming public classes into `courses`. Returns false
+   * (with `error` set) when the listing cannot load. Never renders.
+   */
+  private async fetchFranchiseeSchedule(): Promise<boolean> {
     try {
       // limit 100 (server max): the filters narrow client-side, so ask for the
       // full picture rather than the default 50.
       const result = await getPublicCourses({ franchisee_id: this.franchiseeId, limit: 100 });
       this.courses = result.courses;
-      this.view = 'results';
+      this.scheduleLoaded = true;
+      return true;
     } catch (err) {
       this.error = errorMessage(err, 'Could not load classes right now.');
-      this.view = 'postcode';
+      return false;
+    }
+  }
+
+  /**
+   * Single-item link. Loads the trainer's items and schedule together, so the
+   * item opens with Back already pointing at the trainer's full list. An item
+   * that is not listed (hidden, retired, or a wrong id) falls back to that list
+   * with a plain message instead of a dead end.
+   */
+  private async loadItemLink(itemId: string) {
+    const [items, scheduleOk] = await Promise.all([
+      getPublicItems({ franchisee_id: this.franchiseeId }),
+      this.fetchFranchiseeSchedule(),
+    ]);
+    this.items = items;
+    const item = items.find((i) => i.id === itemId) ?? null;
+    if (item) {
+      this.selectedItem = item;
+      // A schedule failure must not show as an error on the buy form.
+      this.error = '';
+      this.view = 'item';
+    } else {
+      logger.warn('Item link did not match a listed item', { item_id: itemId });
+      this.linkNotice =
+        "Sorry, that item isn't available to buy online at the moment. Here is everything else this trainer offers.";
+      this.view = scheduleOk ? 'results' : 'postcode';
     }
     this.render();
   }
@@ -222,6 +280,7 @@ export class DaisyBooking extends HTMLElement {
       return;
     }
     this.error = '';
+    this.linkNotice = '';
     this.canRetrySearch = false;
     // A new area means new items — clear the old list now so franchisee A's
     // shop can never sit under franchisee B's results while the fetch runs.
@@ -293,6 +352,7 @@ export class DaisyBooking extends HTMLElement {
     if (this.selected) {
       this.view = 'tickets';
       this.error = '';
+      this.linkNotice = '';
       this.render();
       // The results list may be stale by the time a parent opens the checkout
       // step — re-check availability before they fill in the whole form.
@@ -305,6 +365,7 @@ export class DaisyBooking extends HTMLElement {
     if (this.selectedItem) {
       this.view = 'item';
       this.error = '';
+      this.linkNotice = '';
       this.render();
     }
   }
@@ -606,11 +667,14 @@ export class DaisyBooking extends HTMLElement {
   }
 
   private body(): string {
+    const notice = this.linkNotice
+      ? `<div class="notice warn" role="alert">${escapeHtml(this.linkNotice)}</div>`
+      : '';
     switch (this.view) {
       case 'searching':
         return `<h2>Searching…</h2><div class="spinner"></div>`;
       case 'results':
-        return this.resultsView();
+        return notice + this.resultsView();
       case 'interest':
         return this.interestView();
       case 'tickets':
@@ -618,7 +682,7 @@ export class DaisyBooking extends HTMLElement {
       case 'item':
         return this.itemView();
       default:
-        return this.postcodeView();
+        return notice + this.postcodeView();
     }
   }
 
@@ -1106,9 +1170,11 @@ export class DaisyBooking extends HTMLElement {
   private itemView(): string {
     const item = this.selectedItem!;
     const elearning = item.kind === 'elearning';
-    // Items can be reached from the results list or straight off the landing
-    // view of a franchisee embed — go back wherever the customer came from.
-    const back: View = this.courses.length > 0 ? 'results' : 'postcode';
+    // Items can be reached from the results list, straight off the landing
+    // view of a franchisee embed, or from a single-item link. Go back to the
+    // list: the trainer's schedule once it has loaded (even with no classes, it
+    // shows their items and a Request a class button), else the search view.
+    const back: View = this.courses.length > 0 || this.scheduleLoaded ? 'results' : 'postcode';
     const quantity = elearning
       ? ''
       : `

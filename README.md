@@ -35,7 +35,9 @@ The widget ships as one script served from `https://booking.daisyfirstaid.com/wi
 
 Optional attributes: `franchisee="0042"` (filter to one franchisee's courses), `radius="15"` (miles),
 `course-type="paediatric"` (pre-filter to one course family), `month="2026-10"` (pre-filter to one
-month), `theme="light"`.
+month), `theme="light"`, `item="<id>"` (with `franchisee`: open straight onto one shop item; the id
+is the `da_franchisee_products.id` that `get-public-items` returns. An item that is hidden or gone
+falls back to the franchisee's list with a message).
 
 Course family ids for `course-type`: `baby-family`, `paediatric`, `workplace`, `teaching-children`,
 `online`, `bespoke-other` (the six colour-coded families from the approved scheme; the mapping lives
@@ -49,7 +51,10 @@ already-narrowed list:
 ```
 https://booking.daisyfirstaid.com/search?franchisee=0086&course-type=paediatric
 https://booking.daisyfirstaid.com/search?postcode=TN1+1AA&course-type=baby-family&month=2026-11
+https://booking.daisyfirstaid.com/search?franchisee=0031&item=<franchisee product id>
 ```
+
+The per-item link is what the portal's My shop "Copy link" button builds (TRI-0045).
 
 **Pattern B — "Book Online" button → modal.** Keep Emma's existing Divi button; give it the class
 `book-online-trigger` and add this once on the page (Code module):

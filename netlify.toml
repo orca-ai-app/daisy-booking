@@ -33,7 +33,7 @@
   status = 200
 
 # /search → the standalone class finder with shareable pre-filtered links
-# (?postcode, ?franchisee, ?radius, ?course-type, ?month).
+# (?postcode, ?franchisee, ?radius, ?course-type, ?month, ?item).
 [[redirects]]
   from = "/search"
   to = "/search/index.html"

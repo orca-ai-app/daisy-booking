@@ -24,13 +24,14 @@
       //   /search?franchisee=0086&course-type=paediatric
       // and the customer lands on that trainer's paediatric classes only.
       // With no params at all this is simply the class finder.
+      // ?franchisee=0031&item=<id> opens straight onto one shop item (TRI-0045).
       const params = new URLSearchParams(location.search);
       window.addEventListener('DOMContentLoaded', () => {
         const el = document.createElement('daisy-booking');
         // Standalone surface: lets the widget show "Back to [trainer]'s page"
         // in franchisee mode (hidden when embedded on the trainer's own page).
         el.setAttribute('standalone', '');
-        for (const attr of ['postcode', 'franchisee', 'radius', 'course-type', 'month']) {
+        for (const attr of ['postcode', 'franchisee', 'radius', 'course-type', 'month', 'item']) {
           const v = params.get(attr);
           if (v) el.setAttribute(attr, v);
         }
