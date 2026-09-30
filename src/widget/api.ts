@@ -126,6 +126,35 @@ export function isSoldOut(c: CourseCard): boolean {
 }
 
 /**
+ * "Only N spaces left" (TRI-0008, Jenni approved 17 Sep). The count is shown
+ * only once a class is down to its last quarter of places, so a fresh class
+ * reads clean and the number does the urgency work near the end.
+ *
+ * Threshold = ceil(capacity × 0.25): 12 → 3, 20 → 5, 10 → 3, 16 → 4, 4 → 1.
+ * Two extra rules keep tiny classes sensible:
+ *  - a class with nothing sold yet never shows it (so a 1-place class, or a
+ *    2–4 place class, never opens with "Only 1 space left");
+ *  - capacity missing, zero or below the remaining count shows nothing.
+ * Sold-out is not handled here: spotsLine() keeps its own "Sold out".
+ */
+export const LOW_SPACES_FRACTION = 0.25;
+
+export function lowSpacesThreshold(capacity: number): number {
+  return Math.ceil(capacity * LOW_SPACES_FRACTION);
+}
+
+/** The "Only N spaces left" line for a class, or null when it should not show. */
+export function spacesLeftMessage(c: Pick<CourseCard, 'capacity' | 'spots_remaining' | 'sold_out'>): string | null {
+  if (isSoldOut(c as CourseCard)) return null;
+  const capacity = Number(c.capacity);
+  const left = Number(c.spots_remaining);
+  if (!Number.isFinite(capacity) || !Number.isFinite(left) || capacity <= 0) return null;
+  if (left >= capacity) return null;
+  if (left > lowSpacesThreshold(capacity)) return null;
+  return left === 1 ? 'Only 1 space left' : `Only ${left} spaces left`;
+}
+
+/**
  * Places a ticket consumes. Defaults to 1 so a ticket type that predates
  * seats_consumed (or an API that omits it) is never treated as free of charge
  * against the pool.

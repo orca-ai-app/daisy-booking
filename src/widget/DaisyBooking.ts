@@ -11,6 +11,7 @@ import {
   isSoldOut,
   courseDescription,
   seatsFor,
+  spacesLeftMessage,
   SCRIPT_ORIGIN,
   type CourseCard,
   type ItemCard,
@@ -924,8 +925,10 @@ export class DaisyBooking extends HTMLElement {
     if (isSoldOut(c)) {
       return `<div class="spots out">Sold out</div>`;
     }
-    const low = c.spots_remaining <= 3;
-    return `<div class="spots ${low ? 'low' : ''}">${c.spots_remaining} place${c.spots_remaining === 1 ? '' : 's'} left</div>`;
+    // TRI-0008: the count only appears in the last quarter of places
+    // (spacesLeftMessage); above that the class reads clean, no number.
+    const msg = spacesLeftMessage(c);
+    return msg ? `<div class="spots low">${msg}</div>` : '';
   }
 
   private interestView(): string {
@@ -986,9 +989,13 @@ export class DaisyBooking extends HTMLElement {
         <div class="field">
           <label>Ticket</label>
           ${
-            remaining > 0
-              ? `<p class="pool">All tickets come out of the same ${remaining} remaining place${remaining === 1 ? '' : 's'}.</p>`
-              : ''
+            // Same rule as the spaces line: the number only in the last
+            // quarter, otherwise just the shared-pool explanation.
+            remaining <= 0
+              ? ''
+              : spacesLeftMessage(c)
+                ? `<p class="pool">All tickets come out of the same ${remaining} remaining place${remaining === 1 ? '' : 's'}.</p>`
+                : `<p class="pool">All tickets come out of the same pool of places on this class.</p>`
           }
           ${tickets}
         </div>
