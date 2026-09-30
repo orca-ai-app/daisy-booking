@@ -118,6 +118,18 @@ export class DaisyBooking extends HTMLElement {
   constructor() {
     super();
     this.root = this.attachShadow({ mode: 'open' });
+    // Keep typing inside our form fields away from host-page keyboard
+    // handlers. Divi's smoothscroll.js checks event.target for an input, but
+    // Shadow DOM retargets the event to this element, so it treated the space
+    // bar as "page down": scrolled away and blocked the character (TRI-0042,
+    // "Market Harborough" could not be typed). Stopping propagation here, and
+    // never preventDefault, lets the field behave normally.
+    for (const type of ['keydown', 'keypress', 'keyup'] as const) {
+      this.root.addEventListener(type, (e) => {
+        const origin = e.composedPath()[0] as Element | undefined;
+        if (origin && /^(INPUT|TEXTAREA|SELECT)$/.test(origin.tagName)) e.stopPropagation();
+      });
+    }
   }
 
   connectedCallback() {
