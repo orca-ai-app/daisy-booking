@@ -11,6 +11,8 @@ interface DaisyBookingOpenOptions {
   courseType?: string;
   /** Pre-filter by month, 'YYYY-MM'. */
   month?: string;
+  /** 'request' (with franchisee): open straight onto the trainer's Request a class form. */
+  mode?: 'request';
 }
 
 interface Window {

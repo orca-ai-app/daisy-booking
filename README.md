@@ -38,6 +38,9 @@ Optional attributes: `franchisee="0042"` (filter to one franchisee's courses), `
 month), `theme="light"`, `item="<id>"` (with `franchisee`: open straight onto one shop item; the id
 is the `da_franchisee_products.id` that `get-public-items` returns. An item that is hidden or gone
 falls back to the franchisee's list with a message).
+`mode="request"` (with `franchisee`: open straight onto that trainer's Request a class form, whether
+or not they have classes scheduled; the enquiry emails that trainer. A link under the form opens their
+classes. Without `franchisee` it is ignored).
 
 Course family ids for `course-type`: `baby-family`, `paediatric`, `workplace`, `teaching-children`,
 `online`, `bespoke-other` (the six colour-coded families from the approved scheme; the mapping lives
@@ -54,6 +57,8 @@ https://booking.daisyfirstaid.com/search?postcode=TN1+1AA&course-type=baby-famil
 https://booking.daisyfirstaid.com/search?franchisee=0031&item=<franchisee product id>
 ```
 
+`?franchisee=0086&request=1` (or `&mode=request`) opens that trainer's Request a class form.
+
 The per-item link is what the portal's My shop "Copy link" button builds (TRI-0045).
 
 **Pattern B — "Book Online" button → modal.** Keep Emma's existing Divi button; give it the class
@@ -68,8 +73,8 @@ The per-item link is what the portal's My shop "Copy link" button builds (TRI-00
 </script>
 ```
 
-`window.daisyBooking.open({ franchisee, postcode, radius, courseType, month })` opens the booking
-modal in-page; the only hard redirect is the Stripe payment step itself (Wave 11).
+`window.daisyBooking.open({ franchisee, postcode, radius, courseType, month, mode })` opens the booking
+modal in-page (`mode: 'request'` opens the trainer's Request a class form); the only hard redirect is the Stripe payment step itself (Wave 11).
 
 ## Status
 

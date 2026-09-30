@@ -70,6 +70,8 @@ export function open(opts: DaisyBookingOpenOptions = {}) {
   if (opts.radius) widget.setAttribute('radius', String(opts.radius));
   if (opts.courseType) widget.setAttribute('course-type', opts.courseType);
   if (opts.month) widget.setAttribute('month', opts.month);
+  // 'request' opens straight onto the trainer's Request a class form (W5).
+  if (opts.mode) widget.setAttribute('mode', opts.mode);
   body.appendChild(widget);
 
   // Lock BOTH <html> and <body>. Many WordPress/Divi themes make the real

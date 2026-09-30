@@ -113,6 +113,7 @@ export const STYLES = /* css */ `
   }
   button.buy:hover { background: var(--daisy-primary-tint); }
   .back { margin-bottom: 12px; }
+  .request-link { text-align: center; margin: 4px 0 8px; }
   .error { color: var(--daisy-orange); font-size: 13px; margin: 8px 0 0; }
   .empty { text-align: center; padding: 24px 8px; color: var(--daisy-muted); }
   .spinner { width: 28px; height: 28px; border: 3px solid var(--daisy-line); border-top-color: var(--daisy-primary); border-radius: 50%; animation: spin .8s linear infinite; margin: 28px auto; }

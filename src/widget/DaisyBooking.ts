@@ -54,6 +54,8 @@ const MIN_PHONE_DIGITS = 10;
  * results and share the same customer-capture form and checkout redirect.
  * With `item="<franchisee product id>"` as well as `franchisee`, the widget
  * opens straight onto that one item (the per-item shop link, TRI-0045).
+ * With `mode="request"` as well as `franchisee`, it opens straight onto that
+ * trainer's Request a class form (W5).
  */
 export class DaisyBooking extends HTMLElement {
   private root: ShadowRoot;
@@ -94,6 +96,13 @@ export class DaisyBooking extends HTMLElement {
    * widget is embedded ON that page, which is why it's opt-in.
    */
   private standalone = false;
+  /**
+   * `mode="request"` with `franchisee` (W5, Emma 25 Sep): open straight onto
+   * that trainer's Request a class form, whether or not they have classes
+   * scheduled. Used by a website "Request a class" button (modal) or an inline
+   * embed. The trainer's classes stay one click away.
+   */
+  private requestMode = false;
   /** What the customer typed into the search box: a postcode OR a town (G8). */
   private postcode = '';
   /** The place name the server matched a town search to, when it was a town. */
@@ -163,6 +172,18 @@ export class DaisyBooking extends HTMLElement {
       void this.loadByToken(token);
       return;
     }
+    // Request-a-class entry point: routes to the trainer exactly like the
+    // Book Online button's Request a class, so any postcode is ignored (a
+    // postcode would send the enquiry down the vacant-area route instead).
+    // Needs the franchisee; without one it is the plain finder.
+    const mode = (this.getAttribute('mode') ?? '').trim().toLowerCase();
+    if (mode === 'request' && this.franchiseeId) {
+      this.requestMode = true;
+      this.postcode = '';
+      this.view = 'interest';
+      this.render();
+      return;
+    }
     // Single-item link (TRI-0045): /search?franchisee=0031&item=<id> opens
     // straight onto one shop item, the way /book/:token opens a class. Needs
     // the franchisee, because items are only listed per franchisee.
@@ -196,6 +217,19 @@ export class DaisyBooking extends HTMLElement {
   private async loadFranchiseeSchedule() {
     this.view = (await this.fetchFranchiseeSchedule()) ? 'results' : 'postcode';
     this.render();
+  }
+
+  /**
+   * Request mode's "see upcoming classes" link: load the trainer's schedule
+   * (and shop items) on demand, landing on their normal list, from where the
+   * Request a class link leads back to the form.
+   */
+  private async showTrainerClasses() {
+    this.error = '';
+    this.view = 'searching';
+    this.render();
+    await this.loadFranchiseeSchedule();
+    void this.loadItems();
   }
 
   /**
@@ -839,11 +873,17 @@ export class DaisyBooking extends HTMLElement {
              <button class="retry" type="button" data-clear-filters>Show all classes</button>
            </div>`
         : `<p class="sub">${summary}</p>${cards}`;
+    // Trainer mode with classes listed: "no date suits me" still has a route
+    // to the trainer (W5). Postcode searches already get the local trainer's
+    // contact card, and their enquiries route by postcode, so not there.
+    const requestLink = fromSearch
+      ? ''
+      : `<div class="request-link"><button class="link" type="button" data-request-class>Can't find a date? Request a class</button></div>`;
     // Lead with the searched area's own trainer so they get priority the moment a
     // postcode is entered, above the class list rather than below it. In busy
     // areas (e.g. London) there are many nearby classes, and burying the local
     // trainer at the bottom means too much scrolling to reach them (Jenni, 11 Sep).
-    return `${fromSearch ? this.backBtn() : ''}${!fromSearch ? this.trainerPageLink() : ''}${this.localTrainerCard()}<h2>${heading}</h2>${this.filterBar()}${list}${this.itemsSection()}`;
+    return `${fromSearch ? this.backBtn() : ''}${!fromSearch ? this.trainerPageLink() : ''}${this.localTrainerCard()}<h2>${heading}</h2>${this.filterBar()}${list}${requestLink}${this.itemsSection()}`;
   }
 
   /**
@@ -938,8 +978,15 @@ export class DaisyBooking extends HTMLElement {
     const notice = franchiseeRequest
       ? `Leave your details and the trainer will be in touch about upcoming dates, or arranging a class for your group.`
       : `We don't have a course listed in ${escapeHtml(this.locationLabel)} right now. Please leave your details and we'll direct you to one nearby or help arrange a private course for your group.`;
+    // Opened directly by request mode: there is no list behind the form yet,
+    // so no Back; offer the trainer's classes below the form instead.
+    const directRequest = franchiseeRequest && this.requestMode && !this.scheduleLoaded;
+    const back = directRequest ? '' : franchiseeRequest ? this.backBtn('results') : this.backBtn();
+    const seeClasses = directRequest
+      ? `<div class="request-link"><button class="link" type="button" data-show-classes>Or see this trainer's upcoming classes</button></div>`
+      : '';
     return `
-      ${franchiseeRequest ? this.backBtn('results') : this.backBtn()}
+      ${back}
       <h2>${franchiseeRequest ? 'Request a class' : 'No classes near you yet'}</h2>
       <div class="notice">${notice}</div>
       <form class="interest">
@@ -953,6 +1000,7 @@ export class DaisyBooking extends HTMLElement {
         <button class="primary" type="submit" ${this.busy ? 'disabled' : ''}>${this.busy ? 'Sending…' : franchiseeRequest ? 'Send request' : 'Register interest'}</button>
         ${this.error ? `<p class="error" role="alert">${escapeHtml(this.error)}</p>` : ''}
       </form>
+      ${seeClasses}
       ${this.itemsSection()}`;
   }
 
@@ -1326,13 +1374,20 @@ export class DaisyBooking extends HTMLElement {
       ),
     );
 
-    this.root.querySelector('[data-request-class]')?.addEventListener('click', () =>
-      this.guard('request-class', () => {
-        this.view = 'interest';
-        this.error = '';
-        this.render();
-      }),
+    this.root.querySelectorAll('[data-request-class]').forEach((el) =>
+      el.addEventListener('click', () =>
+        this.guard('request-class', () => {
+          this.view = 'interest';
+          this.error = '';
+          this.linkNotice = '';
+          this.render();
+        }),
+      ),
     );
+
+    this.root
+      .querySelector('[data-show-classes]')
+      ?.addEventListener('click', () => this.guard('show-classes', () => this.showTrainerClasses()));
 
     this.root.querySelector('form.interest')?.addEventListener('submit', (e) => {
       e.preventDefault();
