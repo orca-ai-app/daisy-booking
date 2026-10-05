@@ -281,6 +281,35 @@ export async function getCourseByToken(booking_token: string): Promise<CourseCar
   return res.courses[0] ?? null;
 }
 
+/** What the customer entered on an abandoned checkout (migration 066). */
+export interface ResumeDetails {
+  ticket_type_id: string;
+  quantity: number;
+  discount_code: string;
+  service_address: string;
+  parking_notes: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  postcode: string;
+}
+
+/**
+ * The /book/:token page opened from a checkout recovery email. Same course
+ * lookup, plus the earlier details when the resume token is still valid.
+ */
+export async function getCourseForResume(
+  booking_token: string,
+  resume: string,
+): Promise<{ course: CourseCard | null; resume: ResumeDetails | null }> {
+  const res = await call<PublicCoursesResult & { resume?: ResumeDetails }>('get-public-courses', {
+    booking_token,
+    resume,
+  });
+  return { course: res.courses[0] ?? null, resume: res.resume ?? null };
+}
+
 export function submitInterestForm(input: InterestFormInput): Promise<{ ok: true; id: string }> {
   return call<{ ok: true; id: string }>('process-interest-form', input);
 }

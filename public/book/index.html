@@ -25,6 +25,9 @@
       window.addEventListener('DOMContentLoaded', () => {
         const el = document.createElement('daisy-booking');
         if (token) el.setAttribute('token', token);
+        // Checkout recovery email link (?resume=): re-fill the earlier details.
+        const resume = new URLSearchParams(location.search).get('resume');
+        if (token && resume) el.setAttribute('resume', resume);
         document.getElementById('mount').appendChild(el);
       });
     </script>

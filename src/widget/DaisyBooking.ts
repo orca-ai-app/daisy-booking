@@ -4,6 +4,7 @@ import {
   getPublicCourses,
   getPublicItems,
   getCourseByToken,
+  getCourseForResume,
   submitInterestForm,
   validateDiscount,
   createCheckoutSession,
@@ -169,7 +170,7 @@ export class DaisyBooking extends HTMLElement {
       // /book/:token — single-course mode: jump straight to the ticket form.
       this.view = 'searching';
       this.render();
-      void this.loadByToken(token);
+      void this.loadByToken(token, (this.getAttribute('resume') ?? '').trim());
       return;
     }
     // Request-a-class entry point: routes to the trainer exactly like the
@@ -277,9 +278,32 @@ export class DaisyBooking extends HTMLElement {
     this.render();
   }
 
-  private async loadByToken(token: string) {
+  private async loadByToken(token: string, resumeToken = '') {
     try {
-      const course = await getCourseByToken(token);
+      let course: CourseCard | null;
+      if (resumeToken) {
+        // Checkout recovery link: put back what they typed last time. A
+        // ticket that no longer fits falls back to the first affordable one.
+        const res = await getCourseForResume(token, resumeToken);
+        course = res.course;
+        const r = res.resume;
+        if (course && r) {
+          this.formValues = {
+            ticket: r.ticket_type_id,
+            qty: String(r.quantity),
+            name: r.first_name,
+            last: r.last_name,
+            email: r.email,
+            phone: r.phone,
+            postcode: r.postcode,
+            discount: r.discount_code,
+            service_address: r.service_address,
+            parking_notes: r.parking_notes,
+          };
+        }
+      } else {
+        course = await getCourseByToken(token);
+      }
       if (course) {
         this.courses = [course];
         this.selected = course;
