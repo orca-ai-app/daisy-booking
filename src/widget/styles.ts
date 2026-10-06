@@ -97,10 +97,23 @@ export const STYLES = /* css */ `
   .filters .field { flex: 1; min-width: 170px; margin: 0; }
   /* Ticket options — all drawn from the class's one shared pool (G11). */
   p.pool { margin: 0 0 10px; font-size: 12px; color: var(--daisy-muted); }
-  label.ticket { display: flex; align-items: center; gap: 8px; text-transform: none; font-weight: 500; color: var(--daisy-ink); margin-bottom: 8px; }
-  label.ticket.unavailable { color: var(--daisy-muted); }
   .ticket-note { font-size: 12px; color: var(--daisy-muted); }
   .ticket-note.warn { color: var(--daisy-orange); font-weight: 600; }
+  /* B6 basket: a quantity per ticket type and per shop item, then the order summary. */
+  .line { display: flex; align-items: center; gap: 12px; color: var(--daisy-ink); font-size: 15px; padding: 8px 0; border-bottom: 1px solid var(--daisy-line); }
+  .line:last-of-type { border-bottom: none; }
+  .line.unavailable { color: var(--daisy-muted); }
+  .line-body { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+  .line select { width: 76px; flex: none; }
+  .line .tag { margin: 0 0 4px; align-self: flex-start; }
+  .order-summary { background: var(--daisy-paper); border: 1px solid var(--daisy-line); border-radius: var(--radius-sm); padding: 12px 14px; margin: 0 0 16px; font-size: 14px; }
+  .order-summary h3 { font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--daisy-muted); margin: 0 0 6px; }
+  .order-row { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
+  .order-row.total-row { font-weight: 700; border-top: 1px solid var(--daisy-line); margin-top: 6px; padding-top: 6px; }
+  .order-summary p { margin: 6px 0 0; font-size: 12px; color: var(--daisy-muted); }
+  .order-summary p.warn { color: var(--daisy-orange); font-weight: 600; }
+  /* A2: a class delivered at the customer's own home. */
+  .home-badge { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .03em; border-radius: 999px; padding: 2px 10px; margin: 0 8px 6px 0; background: #FFF6D6; color: #8A6D00; }
   /* Undated items ("Available any time") — books and e-learning. */
   h2.items-head { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--daisy-line); }
   .tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; border-radius: 999px; padding: 3px 10px; margin: 0 0 8px; }

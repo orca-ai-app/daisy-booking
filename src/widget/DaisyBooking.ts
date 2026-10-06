@@ -21,6 +21,17 @@ import {
   type CheckoutInput,
 } from './api';
 import { logger } from './logger';
+import {
+  basketPayload,
+  initialTicketValues,
+  isHomeClass,
+  itemField,
+  itemMax,
+  locationLine,
+  summariseBasket,
+  ticketField,
+  ticketMax,
+} from './basket';
 import { COURSE_FAMILIES, familyById, familyForCourse } from './courseFamilies';
 
 type View = 'postcode' | 'searching' | 'results' | 'interest' | 'tickets' | 'item';
@@ -113,6 +124,13 @@ export class DaisyBooking extends HTMLElement {
   private selected: CourseCard | null = null;
   private items: ItemCard[] = [];
   private selectedItem: ItemCard | null = null;
+  /**
+   * B6 basket: the selected class's trainer's shop items, offered on the
+   * booking form so they can go in the same order. Separate from `items`,
+   * which belong to the list views (a postcode search can show a different
+   * trainer's shop from the class picked).
+   */
+  private orderItems: ItemCard[] = [];
   /**
    * True once franchisee mode's schedule has loaded (even if empty), so Back
    * from an item returns to the trainer's list rather than the search box.
@@ -288,9 +306,16 @@ export class DaisyBooking extends HTMLElement {
         course = res.course;
         const r = res.resume;
         if (course && r) {
+          // Every ticket line and shop item of the abandoned order (B6); an
+          // older single-ticket checkout just has the one ticket.
+          const lines = r.lines?.length
+            ? r.lines
+            : [{ ticket_type_id: r.ticket_type_id, quantity: r.quantity }];
+          const basket: Record<string, string> = {};
+          for (const l of lines) basket[ticketField(l.ticket_type_id)] = String(l.quantity);
+          for (const i of r.items ?? []) basket[itemField(i.franchisee_product_id)] = String(i.quantity);
           this.formValues = {
-            ticket: r.ticket_type_id,
-            qty: String(r.quantity),
+            ...basket,
             name: r.first_name,
             last: r.last_name,
             email: r.email,
@@ -307,7 +332,9 @@ export class DaisyBooking extends HTMLElement {
       if (course) {
         this.courses = [course];
         this.selected = course;
+        this.orderItems = [];
         this.view = 'tickets';
+        void this.loadOrderItems();
       } else {
         this.error = 'This booking link is no longer available.';
         this.view = 'postcode';
@@ -412,11 +439,34 @@ export class DaisyBooking extends HTMLElement {
       this.view = 'tickets';
       this.error = '';
       this.linkNotice = '';
+      this.orderItems = [];
       this.render();
       // The results list may be stale by the time a parent opens the checkout
       // step — re-check availability before they fill in the whole form.
       void this.refreshSpots();
+      void this.loadOrderItems();
     }
+  }
+
+  /**
+   * B6 basket: fetch the class trainer's shop items and slot them into the
+   * open booking form in place (a full re-render would wipe anything typed).
+   * No trainer id (older server) or no items: the form stays tickets only.
+   */
+  private async loadOrderItems() {
+    const course = this.selected;
+    const fid = course?.franchisee_id;
+    if (!course || !fid) return;
+    const items = await getPublicItems({ franchisee_id: fid });
+    if (this.view !== 'tickets' || this.selected?.id !== course.id) return;
+    // The whole order is paid to this trainer, so only their own items.
+    this.orderItems = items.filter((i) => !i.franchisee_id || i.franchisee_id === fid);
+    if (this.orderItems.length === 0) return;
+    const slot = this.root.querySelector('[data-order-items]');
+    if (!slot) return;
+    slot.innerHTML = this.orderItemsHtml();
+    this.wireBasket();
+    this.updateSummary();
   }
 
   private selectItem(id: string) {
@@ -450,8 +500,13 @@ export class DaisyBooking extends HTMLElement {
         // (G11) reflect the truth — safe here because a partial sale can only
         // be detected on entry to this view, before anything has been typed.
         const changed = fresh.spots_remaining !== course.spots_remaining;
-        this.selected = fresh;
-        if (changed) this.render();
+        this.selected = { ...fresh, franchisee_id: fresh.franchisee_id ?? course.franchisee_id };
+        if (changed) {
+          // Keep whatever has been chosen or typed so far across the repaint.
+          const open = this.root.querySelector('form.tickets') as HTMLFormElement | null;
+          if (open) this.captureForm(new FormData(open));
+          this.render();
+        }
         return;
       }
       // Patch the DOM in place (a full re-render would wipe anything typed).
@@ -519,20 +574,21 @@ export class DaisyBooking extends HTMLElement {
   private async continueToPayment(form: HTMLFormElement) {
     const data = new FormData(form);
     this.captureForm(data);
-    const ticketId = String(data.get('ticket') ?? '');
     const discountCode = String(data.get('discount') ?? '').trim();
-    if (!ticketId) {
-      this.error = 'Please choose a ticket.';
+    const course = this.selected!;
+    const basket = summariseBasket(course, this.orderItems, this.formValues);
+    if (basket.lines.length === 0) {
+      this.error = 'Please choose at least one ticket.';
       this.render();
       return;
     }
-    // G11: never let a customer pay for seats the class can no longer hold —
-    // quantity × the ticket's places must fit the remaining pool.
-    const qty = Math.max(1, Number(data.get('qty') ?? 1) || 1);
-    const ticket = this.selected!.ticket_types.find((t) => t.id === ticketId);
-    if (ticket && seatsFor(ticket) * qty > this.selected!.spots_remaining) {
-      this.error =
-        qty > 1
+    // G11: never let a customer pay for places the class can no longer hold —
+    // every line's quantity × places per ticket must fit the remaining pool.
+    if (!basket.fits) {
+      const only = basket.lines.length === 1 ? basket.lines[0] : null;
+      this.error = !only
+        ? `Those tickets need ${basket.seats} places, and this class has ${course.spots_remaining} left. Please choose fewer.`
+        : only.quantity > 1
           ? 'That many tickets need more places than this class has left. Try fewer, or another ticket.'
           : 'That ticket needs more places than this class has left. Please choose another.';
       this.render();
@@ -548,9 +604,9 @@ export class DaisyBooking extends HTMLElement {
     this.busy = true;
     this.render();
     await this.startCheckout({
-      course_instance_id: this.selected!.id,
-      ticket_type_id: ticketId,
-      quantity: qty,
+      course_instance_id: course.id,
+      // One ticket type and no items goes as the old single-ticket request.
+      ...basketPayload(basket),
       discount_code: discountCode || undefined,
       customer: this.readCustomer(data),
       // Home/workplace bookings: where the class runs + access notes. Every
@@ -693,13 +749,13 @@ export class DaisyBooking extends HTMLElement {
     const code = input?.value.trim();
     if (!code || !out) return;
     out.textContent = 'Checking…';
-    const ticketId = (this.root.querySelector('input[name="ticket"]:checked') as HTMLInputElement)?.value;
-    const ticket = this.selected!.ticket_types.find((t) => t.id === ticketId);
+    // Codes come off the tickets only, never shop items (B6).
+    const { ticketsPence } = summariseBasket(this.selected!, this.orderItems, this.basketValues());
     try {
       const res = await validateDiscount({
         code,
         course_instance_id: this.selected!.id,
-        amount_pence: ticket?.price_pence,
+        amount_pence: ticketsPence || undefined,
       });
       if (res.valid) {
         out.textContent = res.amount_off_pence
@@ -861,13 +917,14 @@ export class DaisyBooking extends HTMLElement {
           <div class="card${full ? ' full' : ''} family-${fam}" data-id="${c.id}"
                ${full ? 'aria-disabled="true"' : 'role="button" tabindex="0"'}>
             ${famLabel ? `<span class="fam-badge family-${fam}">${escapeHtml(famLabel)}</span>` : ''}
+            ${isHomeClass(c) ? `<span class="home-badge">At your home</span>` : ''}
             <h3>${escapeHtml(c.template_name)}</h3>
             ${c.age_range ? `<div class="agerange">Suitable for ${escapeHtml(c.age_range)}</div>` : ''}
             ${desc ? `<p class="desc">${escapeHtml(truncate(desc, 140))}</p>` : ''}
             <div class="meta">
               <span>${formatDate(c.event_date)}</span>
               <span>${formatTime(c.start_time)}–${formatTime(c.end_time)}</span>
-              <span>${escapeHtml(c.venue_name ?? c.venue_postcode ?? '')}${dist}</span>
+              <span class="where">${escapeHtml(locationLine(c))}${dist}</span>
               <span>with ${escapeHtml(c.franchisee_business || c.franchisee_name || 'Daisy First Aid')}</span>
               <span class="price">${priceLabel}</span>
             </div>
@@ -1032,18 +1089,20 @@ export class DaisyBooking extends HTMLElement {
     const c = this.selected!;
     const remaining = c.spots_remaining;
     // A ticket is purchasable only if the shared pool can seat it (G11).
-    const affordable = c.ticket_types.filter((t) => seatsFor(t) <= remaining);
-    // Restore the ticket chosen before an error re-render, falling back to the
-    // first the customer can actually buy.
-    const remembered = affordable.find((t) => t.id === this.formValues.ticket)?.id;
-    const preselectId = remembered ?? affordable[0]?.id;
-    const tickets = c.ticket_types.map((t) => this.ticketOption(t, remaining, preselectId)).join('');
+    const affordable = c.ticket_types.filter((t) => ticketMax(t, remaining) > 0);
+    // Quantities chosen before an error re-render (or put back by a recovery
+    // link) are kept; otherwise the first ticket that fits starts at 1.
+    const chosen = initialTicketValues(c, this.formValues);
+    const tickets = c.ticket_types
+      .map((t) => this.ticketOption(t, remaining, Number(chosen[ticketField(t.id)] ?? 0)))
+      .join('');
     const desc = courseDescription(c);
     const canBook = !isSoldOut(c) && affordable.length > 0;
     return `
       ${this.backBtn('results')}
       <h2>${escapeHtml(c.display_name || c.template_name)}</h2>
-      <p class="sub">${formatDate(c.event_date)} · ${formatTime(c.start_time)}–${formatTime(c.end_time)} · ${escapeHtml(c.venue_name ?? c.venue_postcode ?? '')}</p>
+      ${isHomeClass(c) ? `<span class="home-badge">At your home</span>` : ''}
+      <p class="sub">${formatDate(c.event_date)} · ${formatTime(c.start_time)}–${formatTime(c.end_time)} · ${escapeHtml(locationLine(c))}</p>
       <p class="sub">Run by ${escapeHtml(c.franchisee_business || c.franchisee_name || 'Daisy First Aid')}${c.franchisee_website ? ` · <a href="${escapeHtml(c.franchisee_website)}" target="_blank" rel="noopener">visit their page</a>` : ''}</p>
       ${c.age_range ? `<div class="agerange">Suitable for ${escapeHtml(c.age_range)}</div>` : ''}
       ${desc ? `<p class="desc full">${escapeHtml(desc)}</p>` : ''}
@@ -1059,7 +1118,7 @@ export class DaisyBooking extends HTMLElement {
       }
       <form class="tickets">
         <div class="field">
-          <label>Ticket</label>
+          <label>Tickets</label>
           ${
             // Same rule as the spaces line: the number only in the last
             // quarter, otherwise just the shared-pool explanation.
@@ -1070,12 +1129,10 @@ export class DaisyBooking extends HTMLElement {
                 : `<p class="pool">All tickets come out of the same pool of places on this class.</p>`
           }
           ${tickets}
+          <p class="hint">Choose how many of each, e.g. 1 Double and 1 Single. Book for your whole group in one go.</p>
         </div>
-        <div class="field">
-          <label for="tqty">How many?</label>
-          <select id="tqty" name="qty">${this.qtyOptions(preselectId)}</select>
-          <p class="hint">Book for your whole group in one go — each one comes off the places above.</p>
-        </div>
+        <div data-order-items>${this.orderItemsHtml()}</div>
+        <div class="order-summary" data-order-summary aria-live="polite">${this.summaryHtml(this.basketValues())}</div>
         ${this.customerFields(this.needsAddress, this.addressRequired)}
         <div class="field">
           <label for="tdiscount">Discount code (optional)</label>
@@ -1086,6 +1143,86 @@ export class DaisyBooking extends HTMLElement {
         ${this.error ? `<p class="error" role="alert">${escapeHtml(this.error)}</p>` : ''}
       </form>
       ${this.trainerBlock(c)}`;
+  }
+
+  /**
+   * The basket's current choices: read from the open form when there is one
+   * (live updates), else from the remembered values plus the starting
+   * ticket quantities (first render).
+   */
+  private basketValues(): Record<string, string> {
+    const form = this.root.querySelector('form.tickets') as HTMLFormElement | null;
+    if (form) {
+      const values: Record<string, string> = {};
+      new FormData(form).forEach((v, k) => {
+        if (typeof v === 'string') values[k] = v;
+      });
+      return values;
+    }
+    return { ...this.formValues, ...initialTicketValues(this.selected!, this.formValues) };
+  }
+
+  /**
+   * The running order summary (B6): every line with its price, the total, and
+   * how many of the class's places the tickets take. Warns, rather than
+   * blocks, while the choice does not fit; Continue to payment re-checks.
+   */
+  private summaryHtml(values: Record<string, string>): string {
+    const c = this.selected!;
+    const basket = summariseBasket(c, this.orderItems, values);
+    if (basket.lines.length === 0) {
+      return `<h3>Your order</h3><p>Choose at least one ticket.</p>`;
+    }
+    const rows = basket.rows
+      .map(
+        (r) =>
+          `<div class="order-row"><span>${escapeHtml(r.label)}</span><span>${formatPence(r.amountPence)}</span></div>`,
+      )
+      .join('');
+    const places = basket.fits
+      ? `<p>Uses ${basket.seats} place${basket.seats === 1 ? '' : 's'} on this class.</p>`
+      : `<p class="warn" role="alert">These tickets need ${basket.seats} places, but only ${c.spots_remaining} ${c.spots_remaining === 1 ? 'is' : 'are'} left. Please choose fewer.</p>`;
+    return `<h3>Your order</h3>${rows}
+      <div class="order-row total-row"><span>Total</span><span>${formatPence(basket.totalPence)}</span></div>
+      ${places}`;
+  }
+
+  /** Repaint just the summary after a quantity changes. */
+  private updateSummary() {
+    const box = this.root.querySelector('[data-order-summary]');
+    if (box) box.innerHTML = this.summaryHtml(this.basketValues());
+  }
+
+  /**
+   * "Add to your order" (B6): the class trainer's shop items, each with a
+   * quantity that starts at none. '' when they sell nothing online.
+   */
+  private orderItemsHtml(): string {
+    if (this.orderItems.length === 0) return '';
+    const rows = this.orderItems
+      .map((item) => {
+        const elearning = item.kind === 'elearning';
+        const chosen = Number(this.formValues[itemField(item.id)] ?? 0);
+        const options = Array.from({ length: itemMax(item) + 1 }, (_, n) =>
+          `<option value="${n}"${n === chosen ? ' selected' : ''}>${n}</option>`,
+        ).join('');
+        return `
+          <div class="line">
+            <span class="line-body">
+              <span class="tag ${elearning ? 'elearning' : 'physical'}">${elearning ? 'E-learning' : 'Book'}</span>
+              <span>${escapeHtml(item.name)} — ${formatPence(item.price_pence)}${this.vatNote(item.vat_rate)}</span>
+              ${elearning ? `<span class="ticket-note">Access details are emailed separately, usually within 48 hours.</span>` : ''}
+            </span>
+            <select name="${itemField(item.id)}" aria-label="How many ${escapeHtml(item.name)}" data-basket>${options}</select>
+          </div>`;
+      })
+      .join('');
+    return `
+      <div class="field">
+        <label>Add to your order (optional)</label>
+        <p class="hint" style="margin:0 0 8px;">From your trainer's shop, paid for in the same checkout.</p>
+        ${rows}
+      </div>`;
   }
 
   /**
@@ -1122,53 +1259,40 @@ export class DaisyBooking extends HTMLElement {
   }
 
   /**
-   * One ticket radio (G11). Every ticket draws on the class's single shared
-   * pool, so a ticket needing more places than remain is disabled and says why
-   * rather than being hidden: seeing "Couples — not enough places left" tells
-   * the customer something useful, silently dropping the option does not.
+   * One ticket line (G11, B6): its price and a "how many" choice running from
+   * 0 to as many as the remaining pool could seat. Every ticket draws on the
+   * class's single shared pool, so a ticket needing more places than remain is
+   * shown greyed out and says why rather than being hidden: seeing "Couples,
+   * not enough places left" tells the customer something useful. The server
+   * re-checks the whole order and reserves its places, so this is UX, not the
+   * guard.
    */
-  /**
-   * Options for the "How many?" selector: how many of the chosen ticket fit in
-   * the remaining pool (a Couple ticket eating 2 places halves it), capped at
-   * 10 to keep the list sane. The backend re-validates and reserves
-   * seats_consumed × quantity, so this is UX, not the guard.
-   */
-  private qtyOptions(ticketId?: string): string {
-    const c = this.selected!;
-    const t = c.ticket_types.find((x) => x.id === (ticketId ?? this.formValues.ticket));
-    const per = t ? seatsFor(t) : 1;
-    const max = Math.max(1, Math.min(10, Math.floor(c.spots_remaining / per)));
-    const chosen = Number(this.formValues.qty ?? '1');
-    return Array.from({ length: max }, (_, i) => {
-      const n = i + 1;
-      return `<option value="${n}"${n === chosen ? ' selected' : ''}>${n}</option>`;
-    }).join('');
-  }
-
-  private ticketOption(t: TicketType, remaining: number, preselectId?: string): string {
+  private ticketOption(t: TicketType, remaining: number, chosen: number): string {
     // Both fields are optional until the API ships them — render nothing when absent.
     const session = t.session_label
       ? `<span style="font-size:12px;color:var(--daisy-muted);">${escapeHtml(t.session_label)}</span>`
       : '';
     const seats = seatsFor(t);
-    const available = seats <= remaining;
-    // Only ever pre-select something the customer can actually buy.
-    const checked = available && t.id === preselectId ? 'checked' : '';
+    const max = ticketMax(t, remaining);
+    const available = max > 0;
     // "Uses 2 places" is worth spelling out for a Couples/family ticket, and
     // meaningless for a single, so only say it when it is more than one.
-    const seatNote = seats > 1 ? `Uses ${seats} places` : '';
+    const seatNote = seats > 1 ? `Uses ${seats} places each` : '';
     const note = available
       ? seatNote
       : `Not enough places left${seats > 1 ? ` — needs ${seats} places` : ''}`;
+    const options = Array.from({ length: max + 1 }, (_, n) =>
+      `<option value="${n}"${n === chosen ? ' selected' : ''}>${n}</option>`,
+    ).join('');
     return `
-        <label class="ticket${available ? '' : ' unavailable'}">
-          <input type="radio" name="ticket" value="${t.id}" ${checked} ${available ? '' : 'disabled'} style="width:auto;" />
-          <span style="display:flex;flex-direction:column;">
+        <div class="line${available ? '' : ' unavailable'}">
+          <span class="line-body">
             <span>${escapeHtml(t.name)} — ${this.priceLine(t)}</span>
             ${session}
             ${note ? `<span class="ticket-note${available ? '' : ' warn'}">${escapeHtml(note)}</span>` : ''}
           </span>
-        </label>`;
+          ${available ? `<select name="${ticketField(t.id)}" aria-label="How many ${escapeHtml(t.name)}" data-basket>${options}</select>` : ''}
+        </div>`;
   }
 
   /**
@@ -1422,19 +1546,18 @@ export class DaisyBooking extends HTMLElement {
       e.preventDefault();
       this.guard('checkout', () => this.continueToPayment(e.target as HTMLFormElement));
     });
-    // Changing ticket re-scopes "How many?" — a 2-place Couple ticket halves
-    // what fits in the remaining pool. Keep the chosen count when it still fits.
-    this.root.querySelectorAll('form.tickets input[name="ticket"]').forEach((el) =>
-      el.addEventListener('change', () => {
-        const sel = this.root.querySelector('#tqty') as HTMLSelectElement | null;
-        if (!sel) return;
-        this.formValues.qty = sel.value;
-        this.formValues.ticket = (el as HTMLInputElement).value;
-        sel.innerHTML = this.qtyOptions((el as HTMLInputElement).value);
-      }),
-    );
+    this.wireBasket();
     this.root
       .querySelector('#tdiscount')
       ?.addEventListener('blur', () => this.guard('discount-check', () => this.checkDiscount()));
+  }
+
+  /** Every ticket/item quantity repaints the running order summary (B6). */
+  private wireBasket() {
+    this.root.querySelectorAll('form.tickets select[data-basket]').forEach((el) => {
+      if ((el as HTMLElement).dataset.wired) return;
+      (el as HTMLElement).dataset.wired = '1';
+      el.addEventListener('change', () => this.guard('basket', () => this.updateSummary()));
+    });
   }
 }

@@ -98,6 +98,12 @@ export interface CourseCard {
   visibility?: 'public' | 'private' | null;
   distance_miles: number | null;
   franchisee_name: string;
+  /**
+   * The trainer running the class (B6 basket): their shop items can be added
+   * to the booking, since the whole order is paid to them. Optional so an
+   * older server simply means no items on the booking form.
+   */
+  franchisee_id?: string | null;
   /** Trading name ("Daisy First Aid Redhill") — who the customer books with. */
   franchisee_business?: string | null;
   /** The trainer's page on daisyfirstaid.com, when HQ has recorded it. */
@@ -293,6 +299,10 @@ export interface ResumeDetails {
   email: string;
   phone: string;
   postcode: string;
+  /** B6 basket: every ticket line of the abandoned order (absent for a single ticket). */
+  lines?: Array<{ ticket_type_id: string; quantity: number }>;
+  /** B6 basket: the shop items that were in the order. */
+  items?: Array<{ franchisee_product_id: string; quantity: number }>;
 }
 
 /**
@@ -340,7 +350,12 @@ export interface CheckoutInput {
   ticket_type_id?: string;
   /** Undated-item path — mutually exclusive with the course fields above. */
   franchisee_product_id?: string;
-  quantity: number;
+  /** Single ticket or single item. Omitted when a basket sends `lines`. */
+  quantity?: number;
+  /** B6 basket: several ticket types for the class, in place of ticket_type_id + quantity. */
+  lines?: Array<{ ticket_type_id: string; quantity: number }>;
+  /** B6 basket: the same trainer's shop items, added to the class booking. */
+  items?: Array<{ franchisee_product_id: string; quantity: number }>;
   /** Phone and postcode are compulsory since round 2 (G3) — the server rejects a booking without them. */
   customer: { first_name: string; last_name: string; email: string; phone: string; postcode: string };
   discount_code?: string;
