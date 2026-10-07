@@ -100,7 +100,7 @@ describe('mode="request" (W5)', () => {
     (root.querySelector('[data-show-classes]') as HTMLButtonElement).click();
     await tick();
     await tick();
-    expect(getPublicCourses).toHaveBeenCalledWith({ franchisee_id: '0086', limit: 100 });
+    expect(getPublicCourses).toHaveBeenCalledWith({ franchisee_id: '0086', limit: 500 });
     expect(root.textContent).toContain('Upcoming classes');
     (root.querySelector('[data-request-class]') as HTMLButtonElement).click();
     expect(root.querySelector('form.interest')).not.toBeNull();

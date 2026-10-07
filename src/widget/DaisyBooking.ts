@@ -259,7 +259,7 @@ export class DaisyBooking extends HTMLElement {
     try {
       // limit 100 (server max): the filters narrow client-side, so ask for the
       // full picture rather than the default 50.
-      const result = await getPublicCourses({ franchisee_id: this.franchiseeId, limit: 100 });
+      const result = await getPublicCourses({ franchisee_id: this.franchiseeId, limit: 500 });
       this.courses = result.courses;
       this.scheduleLoaded = true;
       return true;
@@ -380,7 +380,7 @@ export class DaisyBooking extends HTMLElement {
         radius_miles: this.radius,
         // limit 100 (server max): filters narrow client-side, so fetch the
         // full picture rather than the default 50.
-        limit: 100,
+        limit: 500,
       });
       this.courses = result.courses;
       // When we searched a town, show the place the server actually matched
