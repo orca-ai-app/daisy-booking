@@ -69,6 +69,19 @@ const MIN_PHONE_DIGITS = 10;
  * With `mode="request"` as well as `franchisee`, it opens straight onto that
  * trainer's Request a class form (W5).
  */
+/**
+ * True on phones, tablets and in-app browsers, where the new payment tab is
+ * unreliable. Exported for tests.
+ */
+export function payInSameTab(
+  ua: string = navigator.userAgent,
+  coarsePointer: boolean = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches,
+): boolean {
+  if (/FBAN|FBAV|FB_IAB|Instagram|TikTok|musical_ly|Snapchat|Line\/|LinkedInApp|Pinterest|; wv\)|WebView/i.test(ua)) return true;
+  if (/iPhone|iPad|iPod|Android|Mobile/i.test(ua)) return true;
+  return coarsePointer;
+}
+
 export class DaisyBooking extends HTMLElement {
   private root: ShadowRoot;
   private view: View = 'postcode';
@@ -711,11 +724,16 @@ export class DaisyBooking extends HTMLElement {
     // it here, not after the await) so the customer keeps the website open to
     // check details while paying (Jenni, M3 feedback §2). If the browser
     // blocks it anyway, fall back to redirecting this window as before.
+    // Phones and in-app browsers (Instagram, Facebook, TikTok) go to Stripe in
+    // this tab: a blank tab opened there often never reaches Stripe and leaves
+    // the customer on an empty page (Gigi, TRI-0069). Computers keep the new tab.
     let payTab: Window | null = null;
-    try {
-      payTab = window.open('about:blank', '_blank');
-    } catch {
-      payTab = null;
+    if (!payInSameTab()) {
+      try {
+        payTab = window.open('about:blank', '_blank');
+      } catch {
+        payTab = null;
+      }
     }
     try {
       const { checkout_url } = await createCheckoutSession({
