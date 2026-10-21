@@ -231,6 +231,8 @@ export interface InterestFormInput {
   contact_phone?: string;
   preferred_dates?: string;
   notes?: string;
+  /** Course family label chosen on a trainer's Request a class form (TRI-0072). */
+  course_type?: string;
 }
 
 async function call<T>(path: string, body: unknown): Promise<T> {

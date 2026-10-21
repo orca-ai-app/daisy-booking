@@ -90,6 +90,29 @@ describe('mode="request" (W5)', () => {
     expect(root.textContent).toContain('Request sent');
   });
 
+  it('optional course and postcode go to the trainer with the request (TRI-0072)', async () => {
+    const root = await mount({ franchisee: '0086', mode: 'request' });
+    expect(root.querySelector('select[name="course"]')).not.toBeNull();
+    (root.querySelector('select[name="course"]') as HTMLSelectElement).value = 'paediatric';
+    (root.querySelector('input[name="postcode"]') as HTMLInputElement).value = 'AL1 1AA';
+    fill(root);
+    await tick();
+    const input = submitInterestForm.mock.calls[0][0];
+    expect(input.franchisee_id).toBe('0086');
+    expect(input.course_type).toBe('Paediatric');
+    expect(input.postcode).toBe('AL1 1AA');
+  });
+
+  it('leaving the new fields empty still sends the request', async () => {
+    const root = await mount({ franchisee: '0086', mode: 'request' });
+    fill(root);
+    await tick();
+    const input = submitInterestForm.mock.calls[0][0];
+    expect(input.course_type).toBeUndefined();
+    expect(input.postcode).toBeUndefined();
+    expect(root.textContent).toContain('Request sent');
+  });
+
   it('accepts the mode case-insensitively', async () => {
     const root = await mount({ franchisee: '0086', mode: ' Request ' });
     expect(root.querySelector('form.interest')).not.toBeNull();

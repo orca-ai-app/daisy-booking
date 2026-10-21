@@ -559,9 +559,17 @@ export class DaisyBooking extends HTMLElement {
         // A franchisee-page request routes to that trainer (no postcode). Otherwise
         // a town search sends the place the server matched ("chippy" → "Chipping
         // Norton"); a postcode goes through as typed; raw input is the fallback.
+        // A trainer's form can also carry the customer's own postcode (optional,
+        // TRI-0072). Routing is by franchisee_id, so it still goes to the trainer.
         ...(franchiseeRequest
-          ? { franchisee_id: this.franchiseeId }
+          ? {
+              franchisee_id: this.franchiseeId,
+              ...(String(data.get('postcode') ?? '').trim()
+                ? { postcode: String(data.get('postcode') ?? '').trim() }
+                : {}),
+            }
           : { postcode: UK_POSTCODE_RE.test(pc) ? pc : (this.resolvedLocation ?? pc) }),
+        course_type: familyById(String(data.get('course') ?? ''))?.label,
         num_attendees: attendees,
         contact_name: name,
         contact_email: email,
@@ -1095,6 +1103,14 @@ export class DaisyBooking extends HTMLElement {
           <div class="field"><label for="iphone">Phone (optional)</label><input id="iphone" name="phone" ${this.val('phone')} /></div>
           <div class="field"><label for="iatt">How many people?</label><input id="iatt" name="attendees" type="number" min="1" ${this.val('attendees', '1')} /></div>
         </div>
+        ${
+          franchiseeRequest
+            ? `<div class="row">
+          <div class="field"><label for="icourse">Which course? (optional)</label><select id="icourse" name="course"><option value="">Not sure yet</option>${COURSE_FAMILIES.map((f) => `<option value="${f.id}"${this.formValues.course === f.id ? ' selected' : ''}>${escapeHtml(f.label)}</option>`).join('')}</select></div>
+          <div class="field"><label for="ipostcode">Your postcode (optional)</label><input id="ipostcode" name="postcode" autocomplete="postal-code" ${this.val('postcode')} /></div>
+        </div>`
+            : ''
+        }
         <div class="field"><label for="inotes">${franchiseeRequest ? 'What are you looking for? (preferred dates, ages, anything else)' : 'Please describe the course you require and anything else'}</label><textarea id="inotes" name="notes" rows="3">${escapeHtml(this.formValues.notes ?? '')}</textarea></div>
         <button class="primary" type="submit" ${this.busy ? 'disabled' : ''}>${this.busy ? 'Sending…' : franchiseeRequest ? 'Send request' : 'Register interest'}</button>
         ${this.error ? `<p class="error" role="alert">${escapeHtml(this.error)}</p>` : ''}
