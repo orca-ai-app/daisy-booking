@@ -1,7 +1,7 @@
 // Thin fetch wrapper over the public Daisy Edge Functions. No Supabase SDK —
 // keeps the widget bundle tiny. The anon key is public (RLS-gated).
 
-import { logger } from './logger';
+import { logger } from "./logger";
 
 const BASE = `${__SUPABASE_URL__}/functions/v1`;
 const ANON = __SUPABASE_ANON_KEY__;
@@ -24,26 +24,33 @@ export const SCRIPT_ORIGIN: string = (() => {
 
 /** A failed edge-function call: `network` = fetch threw / no response at all. */
 export class ApiError extends Error {
-  readonly kind: 'network' | 'server';
+  readonly kind: "network" | "server";
   readonly status?: number;
   readonly requestId?: string;
 
-  constructor(message: string, kind: 'network' | 'server', status?: number, requestId?: string) {
+  constructor(
+    message: string,
+    kind: "network" | "server",
+    status?: number,
+    requestId?: string,
+  ) {
     super(message);
-    this.name = 'ApiError';
+    this.name = "ApiError";
     this.kind = kind;
     this.status = status;
     this.requestId = requestId;
   }
 }
 
-export const NETWORK_MESSAGE = 'Check your internet connection and try again.';
+export const NETWORK_MESSAGE = "Check your internet connection and try again.";
 
 /** User-facing message for a failed call, with `(ref XXXX)` when the server sent one. */
 export function errorMessage(err: unknown, fallback: string): string {
   if (err instanceof ApiError) {
-    if (err.kind === 'network') return NETWORK_MESSAGE;
-    return err.requestId ? `${err.message} (ref ${err.requestId})` : err.message;
+    if (err.kind === "network") return NETWORK_MESSAGE;
+    return err.requestId
+      ? `${err.message} (ref ${err.requestId})`
+      : err.message;
   }
   return fallback;
 }
@@ -92,10 +99,10 @@ export interface CourseCard {
   delivered_at_address?: boolean;
   /**
    * Public or private. Lets the widget mirror the server's checkout address
-   * gate exactly (private OR delivered_at_address). Present on the /book/:token
+   * gate (required only when public AND delivered_at_address). Present on the /book/:token
    * path; null on public search (only public rows, so the flag decides).
    */
-  visibility?: 'public' | 'private' | null;
+  visibility?: "public" | "private" | null;
   distance_miles: number | null;
   franchisee_name: string;
   /**
@@ -150,14 +157,17 @@ export function lowSpacesThreshold(capacity: number): number {
 }
 
 /** The "Only N spaces left" line for a class, or null when it should not show. */
-export function spacesLeftMessage(c: Pick<CourseCard, 'capacity' | 'spots_remaining' | 'sold_out'>): string | null {
+export function spacesLeftMessage(
+  c: Pick<CourseCard, "capacity" | "spots_remaining" | "sold_out">,
+): string | null {
   if (isSoldOut(c as CourseCard)) return null;
   const capacity = Number(c.capacity);
   const left = Number(c.spots_remaining);
-  if (!Number.isFinite(capacity) || !Number.isFinite(left) || capacity <= 0) return null;
+  if (!Number.isFinite(capacity) || !Number.isFinite(left) || capacity <= 0)
+    return null;
   if (left >= capacity) return null;
   if (left > lowSpacesThreshold(capacity)) return null;
-  return left === 1 ? 'Only 1 space left' : `Only ${left} spaces left`;
+  return left === 1 ? "Only 1 space left" : `Only ${left} spaces left`;
 }
 
 /**
@@ -166,7 +176,9 @@ export function spacesLeftMessage(c: Pick<CourseCard, 'capacity' | 'spots_remain
  * against the pool.
  */
 export function seatsFor(t: TicketType): number {
-  return Number.isFinite(t.seats_consumed) && t.seats_consumed >= 1 ? t.seats_consumed : 1;
+  return Number.isFinite(t.seats_consumed) && t.seats_consumed >= 1
+    ? t.seats_consumed
+    : 1;
 }
 
 /**
@@ -175,12 +187,12 @@ export function seatsFor(t: TicketType): number {
  * blank override so it simply falls back.
  */
 export function courseDescription(c: CourseCard): string {
-  return c.description_override?.trim() || c.template_description?.trim() || '';
+  return c.description_override?.trim() || c.template_description?.trim() || "";
 }
 
 export interface PublicCoursesResult {
   courses: CourseCard[];
-  territory_status: 'active' | 'vacant' | 'none';
+  territory_status: "active" | "vacant" | "none";
   suggest_interest_form: boolean;
   /** Place name the server matched a town/area search to (G8). */
   resolved_location?: string;
@@ -208,7 +220,7 @@ export interface ItemCard {
   product_id: string;
   name: string;
   description: string | null;
-  kind: 'physical' | 'elearning';
+  kind: "physical" | "elearning";
   price_pence: number;
   /** VAT rate percentage — when set, prices show "incl. VAT @ {rate}%". */
   vat_rate: number | null;
@@ -239,32 +251,47 @@ async function call<T>(path: string, body: unknown): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${BASE}/${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: `Bearer ${ANON}` },
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: ANON,
+        Authorization: `Bearer ${ANON}`,
+      },
       body: JSON.stringify(body),
     });
   } catch (err) {
     logger.warn(`Network failure calling ${path}`, { error: String(err) });
-    throw new ApiError(NETWORK_MESSAGE, 'network');
+    throw new ApiError(NETWORK_MESSAGE, "network");
   }
   if (!res.ok) {
     let message = `Something went wrong (${res.status})`;
     let requestId: string | undefined;
     try {
-      const data = (await res.json()) as { error?: string; request_id?: string };
+      const data = (await res.json()) as {
+        error?: string;
+        request_id?: string;
+      };
       if (data.error) message = data.error;
       if (data.request_id) requestId = data.request_id;
     } catch {
       /* non-JSON */
     }
-    logger.error(`${path} failed (${res.status}): ${message}`, undefined, requestId);
-    throw new ApiError(message, 'server', res.status, requestId);
+    logger.error(
+      `${path} failed (${res.status}): ${message}`,
+      undefined,
+      requestId,
+    );
+    throw new ApiError(message, "server", res.status, requestId);
   }
   try {
     return (await res.json()) as T;
   } catch {
     logger.error(`${path} returned a malformed response`);
-    throw new ApiError('Unexpected response from the server.', 'server', res.status);
+    throw new ApiError(
+      "Unexpected response from the server.",
+      "server",
+      res.status,
+    );
   }
 }
 
@@ -281,11 +308,15 @@ export function getPublicCourses(input: {
   /** Server default is 50, capped at 500. The filters narrow client-side, so ask for 500 (TRI-0053). */
   limit?: number;
 }): Promise<PublicCoursesResult> {
-  return call<PublicCoursesResult>('get-public-courses', input);
+  return call<PublicCoursesResult>("get-public-courses", input);
 }
 
-export async function getCourseByToken(booking_token: string): Promise<CourseCard | null> {
-  const res = await call<PublicCoursesResult>('get-public-courses', { booking_token });
+export async function getCourseByToken(
+  booking_token: string,
+): Promise<CourseCard | null> {
+  const res = await call<PublicCoursesResult>("get-public-courses", {
+    booking_token,
+  });
   return res.courses[0] ?? null;
 }
 
@@ -315,15 +346,20 @@ export async function getCourseForResume(
   booking_token: string,
   resume: string,
 ): Promise<{ course: CourseCard | null; resume: ResumeDetails | null }> {
-  const res = await call<PublicCoursesResult & { resume?: ResumeDetails }>('get-public-courses', {
-    booking_token,
-    resume,
-  });
+  const res = await call<PublicCoursesResult & { resume?: ResumeDetails }>(
+    "get-public-courses",
+    {
+      booking_token,
+      resume,
+    },
+  );
   return { course: res.courses[0] ?? null, resume: res.resume ?? null };
 }
 
-export function submitInterestForm(input: InterestFormInput): Promise<{ ok: true; id: string }> {
-  return call<{ ok: true; id: string }>('process-interest-form', input);
+export function submitInterestForm(
+  input: InterestFormInput,
+): Promise<{ ok: true; id: string }> {
+  return call<{ ok: true; id: string }>("process-interest-form", input);
 }
 
 /**
@@ -337,10 +373,10 @@ export async function getPublicItems(input: {
   postcode?: string;
 }): Promise<ItemCard[]> {
   try {
-    const res = await call<PublicItemsResult>('get-public-items', input);
+    const res = await call<PublicItemsResult>("get-public-items", input);
     return Array.isArray(res?.items) ? res.items : [];
   } catch (err) {
-    logger.info('No purchasable items available', { error: String(err) });
+    logger.info("No purchasable items available", { error: String(err) });
     return [];
   }
 }
@@ -359,7 +395,13 @@ export interface CheckoutInput {
   /** B6 basket: the same trainer's shop items, added to the class booking. */
   items?: Array<{ franchisee_product_id: string; quantity: number }>;
   /** Phone and postcode are compulsory since round 2 (G3) — the server rejects a booking without them. */
-  customer: { first_name: string; last_name: string; email: string; phone: string; postcode: string };
+  customer: {
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone: string;
+    postcode: string;
+  };
   discount_code?: string;
   origin?: string;
   /** Private/home/workplace bookings: where the class is delivered (required) and any parking/access notes (optional). */
@@ -378,11 +420,15 @@ export function validateDiscount(input: {
   course_instance_id?: string;
   amount_pence?: number;
 }): Promise<DiscountResult> {
-  return call<DiscountResult>('validate-discount', input);
+  return call<DiscountResult>("validate-discount", input);
 }
 
 export function createCheckoutSession(
   input: CheckoutInput,
-): Promise<{ checkout_url: string; session_id: string; booking_reference: string }> {
-  return call('create-checkout-session', input);
+): Promise<{
+  checkout_url: string;
+  session_id: string;
+  booking_reference: string;
+}> {
+  return call("create-checkout-session", input);
 }
