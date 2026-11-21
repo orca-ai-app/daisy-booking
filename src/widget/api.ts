@@ -327,6 +327,10 @@ export interface ResumeDetails {
   discount_code: string;
   service_address: string;
   parking_notes: string;
+  /** November batch (migration 073); absent from older function versions. */
+  attendee_details?: string;
+  heard_about?: string;
+  heard_about_other?: string;
   first_name: string;
   last_name: string;
   email: string;
@@ -407,6 +411,10 @@ export interface CheckoutInput {
   /** Private/home/workplace bookings: where the class is delivered (required) and any parking/access notes (optional). */
   service_address?: string;
   parking_notes?: string;
+  /** November batch (migration 073): optional, class bookings only. */
+  attendee_details?: string;
+  heard_about?: string;
+  heard_about_other?: string;
 }
 
 export interface DiscountResult {

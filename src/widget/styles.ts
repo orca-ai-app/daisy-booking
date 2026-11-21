@@ -31,6 +31,7 @@ export const STYLES = /* css */ `
     display: block;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   .root { background: var(--daisy-bg); border: 1px solid var(--daisy-line); border-radius: var(--radius); padding: 20px; }
   .modal .root { border: none; padding: 0; background: transparent; }
   h2 { font-family: 'Quicksand', sans-serif; font-size: 20px; font-weight: 700; margin: 0 0 4px; color: var(--daisy-ink); }

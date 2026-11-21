@@ -21,6 +21,7 @@ import {
   type CheckoutInput,
 } from "./api";
 import { logger } from "./logger";
+import { bookerExtrasHtml, readBookerExtras } from "./bookerExtras";
 import {
   basketPayload,
   initialTicketValues,
@@ -360,6 +361,9 @@ export class DaisyBooking extends HTMLElement {
             discount: r.discount_code,
             service_address: r.service_address,
             parking_notes: r.parking_notes,
+            attendee_details: r.attendee_details ?? "",
+            heard_about: r.heard_about ?? "",
+            heard_about_other: r.heard_about_other ?? "",
           };
         }
       } else {
@@ -674,6 +678,9 @@ export class DaisyBooking extends HTMLElement {
       ...basketPayload(basket),
       discount_code: discountCode || undefined,
       customer: this.readCustomer(data),
+      // November batch (migration 073): "Who's coming?" and "How did you hear
+      // about us?", both optional; left out when blank.
+      ...readBookerExtras(data),
       // Home/workplace bookings: where the class runs + access notes. Every
       // private /book/:token booking, plus any public class the franchisee
       // flagged as delivered at the customer's address (migration 059).
@@ -1249,6 +1256,7 @@ export class DaisyBooking extends HTMLElement {
         <div data-order-items>${this.orderItemsHtml()}</div>
         <div class="order-summary" data-order-summary aria-live="polite">${this.summaryHtml(this.basketValues())}</div>
         ${this.customerFields(this.needsAddress, this.addressRequired)}
+        ${bookerExtrasHtml(this.formValues)}
         <div class="field">
           <label for="tdiscount">Discount code (optional)</label>
           <input id="tdiscount" name="discount" placeholder="Have a code?" ${this.val("discount")} />
@@ -1715,6 +1723,14 @@ export class DaisyBooking extends HTMLElement {
       );
     });
     this.wireBasket();
+    // "Other" on How did you hear about us? reveals a short text box.
+    this.root
+      .querySelector("[data-heard-about]")
+      ?.addEventListener("change", (e) => {
+        const other = this.root.querySelector<HTMLElement>("[data-heard-other]");
+        if (other)
+          other.hidden = (e.target as HTMLSelectElement).value !== "other";
+      });
     this.root
       .querySelector("#tdiscount")
       ?.addEventListener("blur", () =>
